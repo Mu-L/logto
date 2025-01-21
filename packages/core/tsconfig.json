@@ -1,6 +1,14 @@
 {
-  "extends": "./tsconfig.base",
+  "extends": "@silverhand/ts-config/tsconfig.base",
   "compilerOptions": {
+    "declaration": false,
+    "outDir": "build",
+    "baseUrl": ".",
+    "paths": {
+      "#src/*": [
+        "src/*"
+      ]
+    },
     "types": [
       "node",
       "jest",
@@ -9,6 +17,7 @@
   },
   "include": [
     "src",
-    "jest.*.ts"
+    "*.config.ts",
+    "*.setup.ts"
   ]
 }

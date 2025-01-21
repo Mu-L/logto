@@ -1,33 +1,30 @@
-import { OidcModelInstances, CreateOidcModelInstance } from '@logto/schemas';
-import { createMockPool, createMockQueryResult, sql } from 'slonik';
+import type { CreateOidcModelInstance } from '@logto/schemas';
+import { OidcModelInstances } from '@logto/schemas';
+import { createMockPool, createMockQueryResult, sql } from '@silverhand/slonik';
 
-import { convertToIdentifiers } from '@/database/utils';
-import envSet from '@/env-set';
-import { expectSqlAssert, QueryType } from '@/utils/test-utils';
+import { convertToIdentifiers } from '#src/utils/sql.js';
+import type { QueryType } from '#src/utils/test-utils.js';
+import { expectSqlAssert } from '#src/utils/test-utils.js';
 
-import {
+const { jest } = import.meta;
+
+const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
+
+const pool = createMockPool({
+  query: async (sql, values) => {
+    return mockQuery(sql, values);
+  },
+});
+
+const { createOidcModelInstanceQueries } = await import('./oidc-model-instance.js');
+const {
   upsertInstance,
   findPayloadById,
   findPayloadByPayloadField,
   consumeInstanceById,
   destroyInstanceById,
   revokeInstanceByGrantId,
-} from './oidc-model-instance';
-
-const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
-
-jest.spyOn(envSet, 'pool', 'get').mockReturnValue(
-  createMockPool({
-    query: async (sql, values) => {
-      return mockQuery(sql, values);
-    },
-  })
-);
-
-jest.mock('@/database/utils', () => ({
-  ...jest.requireActual('@/database/utils'),
-  convertToTimestamp: () => 100,
-}));
+} = createOidcModelInstanceQueries(pool);
 
 describe('oidc-model-instance query', () => {
   const { table, fields } = convertToIdentifiers(OidcModelInstances);
@@ -47,7 +44,7 @@ describe('oidc-model-instance query', () => {
     const expectSql = sql`
       insert into ${table} ("model_name", "id", "payload", "expires_at")
       values ($1, $2, $3, to_timestamp($4::double precision / 1000))
-      on conflict ("model_name", "id") do update
+      on conflict ("tenant_id", "model_name", "id") do update
       set "payload"=excluded."payload", "expires_at"=excluded."expires_at"
     `;
 
@@ -112,9 +109,11 @@ describe('oidc-model-instance query', () => {
   });
 
   it('consumeInstanceById', async () => {
+    jest.useFakeTimers().setSystemTime(100_000);
+
     const expectSql = sql`
       update ${table}
-      set ${fields.consumedAt}=$1
+      set ${fields.consumedAt}=to_timestamp($1)
       where ${fields.modelName}=$2
       and ${fields.id}=$3
     `;
@@ -127,6 +126,8 @@ describe('oidc-model-instance query', () => {
     });
 
     await consumeInstanceById(instance.modelName, instance.id);
+
+    jest.useRealTimers();
   });
 
   it('destroyInstanceById', async () => {

@@ -5,8 +5,8 @@
 }
 
 @mixin main-content-width {
-  max-width: 1168px;
-  min-width: 604px;
+  max-width: 1300px;
+  min-width: 560px;
   margin: 0 auto;
 }
 
@@ -24,7 +24,7 @@
 }
 
 @mixin form-text-field {
-  width: dim.$form-text-field-width;
+  width: 100%;
 }
 
 @mixin vertical-bar {
@@ -32,16 +32,16 @@
   width: 0;
 }
 
-@mixin subhead-cap {
-  color: var(--color-caption);
-  font: var(--font-subhead-cap);
+@mixin section-head-1 {
+  color: var(--color-text-secondary);
+  font: var(--font-section-head-1);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-@mixin subhead-cap-small {
-  @include subhead-cap;
-  font: var(--font-subhead-cap-small);
+@mixin section-head-2 {
+  @include section-head-1;
+  font: var(--font-section-head-2);
 }
 
 @mixin rotating-animation {
@@ -84,5 +84,35 @@
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
+  }
+}
+
+@mixin multi-line-ellipsis($line) {
+  // https://css-tricks.com/almanac/properties/l/line-clamp/
+  /* stylelint-disable-next-line value-no-vendor-prefix */
+  display: -webkit-box;
+  -webkit-line-clamp: $line;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+$allowed-z-indexes: (
+  base: 0,
+  front: 1,
+  behind: -1,
+  modal-backdrop: 100,
+  modal: 101,
+  confirm-modal: 102,
+  dropdown: 199,
+  tooltip: 200,
+);
+
+@mixin z-index($index) {
+  @if map-has-key($allowed-z-indexes, $index) {
+    z-index: map-get($allowed-z-indexes, $index);
+  }
+  @else {
+    @error 'Invalid z-index value. Allowed values are #{map-keys($allowed-z-indexes)}';
   }
 }

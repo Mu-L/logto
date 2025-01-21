@@ -1,11 +1,17 @@
 import { Users } from '@logto/schemas';
-import { NotFoundError, SlonikError } from 'slonik';
+import {
+  NotFoundError,
+  SlonikError,
+  UniqueIntegrityConstraintViolationError,
+} from '@silverhand/slonik';
 
-import RequestError from '@/errors/RequestError';
-import { DeletionError, InsertionError, UpdateError } from '@/errors/SlonikError';
-import { createContextWithRouteParameters } from '@/utils/test-utils';
+import RequestError from '#src/errors/RequestError/index.js';
+import { DeletionError, InsertionError, UpdateError } from '#src/errors/SlonikError/index.js';
+import { createContextWithRouteParameters } from '#src/utils/test-utils.js';
 
-import koaSlonikErrorHandler from './koa-slonik-error-handler';
+import koaSlonikErrorHandler from './koa-slonik-error-handler.js';
+
+const { jest } = import.meta;
 
 describe('koaSlonikErrorHandler middleware', () => {
   const next = jest.fn();
@@ -44,6 +50,7 @@ describe('koaSlonikErrorHandler middleware', () => {
     await expect(koaSlonikErrorHandler()(ctx, next)).rejects.toMatchError(
       new RequestError({
         code: 'entity.create_failed',
+        status: 422,
         name: Users.tableSingular,
       })
     );
@@ -62,6 +69,7 @@ describe('koaSlonikErrorHandler middleware', () => {
     await expect(koaSlonikErrorHandler()(ctx, next)).rejects.toMatchError(
       new RequestError({
         code: 'entity.not_exists',
+        status: 404,
         name: Users.tableSingular,
       })
     );
@@ -91,6 +99,40 @@ describe('koaSlonikErrorHandler middleware', () => {
       new RequestError({
         code: 'entity.not_found',
         status: 404,
+      })
+    );
+  });
+
+  it('UniqueIntegrityConstraintViolationError for protected application host', async () => {
+    const error = new UniqueIntegrityConstraintViolationError(
+      new Error(' '),
+      'applications__protected_app_metadata_host'
+    );
+    next.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    await expect(koaSlonikErrorHandler()(ctx, next)).rejects.toMatchError(
+      new RequestError({
+        code: 'application.protected_application_subdomain_exists',
+        status: 422,
+      })
+    );
+  });
+
+  it('UniqueIntegrityConstraintViolationError for protected application custom domain', async () => {
+    const error = new UniqueIntegrityConstraintViolationError(
+      new Error(' '),
+      'applications__protected_app_metadata_custom_domain'
+    );
+    next.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    await expect(koaSlonikErrorHandler()(ctx, next)).rejects.toMatchError(
+      new RequestError({
+        code: 'domain.hostname_already_exists',
+        status: 422,
       })
     );
   });

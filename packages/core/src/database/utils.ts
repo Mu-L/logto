@@ -1,76 +1,60 @@
-import { SchemaValuePrimitive, SchemaValue } from '@logto/schemas';
-import { Falsy, notFalsy } from '@silverhand/essentials';
-import dayjs from 'dayjs';
-import { sql, SqlSqlToken, SqlToken, QueryResult, IdentifierSqlToken } from 'slonik';
+import { type GeneratedSchema } from '@logto/schemas';
+import { type SchemaLike, type Table } from '@logto/shared';
+import { type SqlSqlToken, sql } from '@silverhand/slonik';
 
-import { FieldIdentifiers, Table } from './types';
-
-export const conditionalSql = <T>(value: T, buildSql: (value: Exclude<T, Falsy>) => SqlSqlToken) =>
-  notFalsy(value) ? buildSql(value) : sql``;
-
-export const autoSetFields = Object.freeze(['createdAt', 'updatedAt'] as const);
-export type OmitAutoSetFields<T> = Omit<T, typeof autoSetFields[number]>;
-export type ExcludeAutoSetFields<T> = Exclude<T, typeof autoSetFields[number]>;
-export const excludeAutoSetFields = <T extends string>(fields: readonly T[]) =>
-  Object.freeze(
-    fields.filter(
-      (field): field is ExcludeAutoSetFields<T> =>
-        // Read only string arrays
-        // eslint-disable-next-line no-restricted-syntax
-        !(autoSetFields as readonly string[]).includes(field)
-    )
-  );
+import { conditionalSql, convertToIdentifiers } from '#src/utils/sql.js';
 
 /**
- * Note `undefined` is removed from the acceptable list,
- * since you should NOT call this function if ignoring the field is the desired behavior.
- * Calling this function with `null` means an explicit `null` setting in database is expected.
- * @param key The key of value. Will treat as `timestamp` if it ends with `_at` or 'At' AND value is a number;
- * @param value The value to convert.
- * @returns A primitive that can be saved into database.
+ * Options for searching for a string within a set of fields (case-insensitive).
  */
-export const convertToPrimitiveOrSql = (
-  key: string,
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  value: NonNullable<SchemaValue> | null
-  // eslint-disable-next-line @typescript-eslint/ban-types
-): NonNullable<SchemaValuePrimitive> | SqlToken | null => {
-  if (value === null) {
-    return null;
-  }
-
-  if (typeof value === 'object') {
-    return JSON.stringify(value);
-  }
-
-  if (['_at', 'At'].some((value) => key.endsWith(value)) && typeof value === 'number') {
-    return sql`to_timestamp(${value}::double precision / 1000)`;
-  }
-
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
-
-  throw new Error(`Cannot convert ${key} to primitive`);
+export type SearchOptions<Keys extends string> = {
+  fields: readonly Keys[];
+  keyword: string;
 };
 
-export const convertToIdentifiers = <T extends Table>({ table, fields }: T, withPrefix = false) => {
-  const fieldsIdentifiers = Object.entries<string>(fields).map<
-    [keyof T['fields'], IdentifierSqlToken]
-  >(([key, value]) => [key, sql.identifier(withPrefix ? [table, value] : [value])]);
+/**
+ * Build the SQL for searching for a string within a set of fields (case-insensitive) of a
+ * schema. Fields are joined by `or`.
+ *
+ * - If `search` is `undefined`, it will return an empty SQL.
+ * - If `search` is defined, it will return a SQL that is wrapped in a pair of parentheses.
+ *
+ * @param schema The schema to search.
+ * @param search The search options.
+ * @param prefixSql The SQL to prefix the generated SQL. Defaults to `where `. Ignored if
+ * `search` is `undefined`.
+ * @returns The generated SQL.
+ */
+export const buildSearchSql = <
+  Keys extends string,
+  CreateSchema extends Partial<SchemaLike<Keys>>,
+  Schema extends SchemaLike<Keys>,
+  SearchKeys extends Keys,
+>(
+  schema: GeneratedSchema<Keys, CreateSchema, Schema>,
+  search?: SearchOptions<SearchKeys>,
+  prefixSql: SqlSqlToken = sql`where `
+) => {
+  const { fields } = convertToIdentifiers(schema, true);
 
-  return {
-    table: sql.identifier([table]),
-    // Key value inferred from the original fields directly
-    // eslint-disable-next-line no-restricted-syntax
-    fields: Object.fromEntries(fieldsIdentifiers) as FieldIdentifiers<keyof T['fields']>,
-  };
+  return conditionalSql(search, (search) => {
+    const { fields: searchFields, keyword } = search;
+    const searchSql = sql.join(
+      searchFields.map((field) => sql`${fields[field]} ilike ${`%${keyword}%`}`),
+      sql` or `
+    );
+    return sql`${prefixSql}(${searchSql})`;
+  });
 };
 
-export const convertToTimestamp = (time = dayjs()) => sql`to_timestamp(${time.valueOf() / 1000})`;
-
-export const manyRows = async <T>(query: Promise<QueryResult<T>>): Promise<readonly T[]> => {
-  const { rows } = await query;
-
-  return rows;
+/**
+ * Expand the fields of a schema into a SQL list. Useful for `select` statements.
+ *
+ * @param schema The schema to expand.
+ * @param tablePrefix Whether to prefix the fields with the table name.
+ * @returns The generated SQL list separated by `, `.
+ */
+export const expandFields = <Keys extends string>(schema: Table<Keys>, tablePrefix = false) => {
+  const { fields } = convertToIdentifiers(schema, tablePrefix);
+  return sql.join(Object.values(fields), sql`, `);
 };

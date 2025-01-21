@@ -1,12 +1,22 @@
-import { createMockContext, Options } from '@shopify/jest-koa-mocks';
-import Koa, { MiddlewareType, Context, Middleware } from 'koa';
-import Router, { IRouterParamContext } from 'koa-router';
-import { Provider } from 'oidc-provider';
-import { createMockPool, createMockQueryResult, QueryResult, QueryResultRow } from 'slonik';
-import { PrimitiveValueExpression } from 'slonik/dist/src/types.d';
+import crypto from 'node:crypto';
+
+import type { QueryResult, QueryResultRow } from '@silverhand/slonik';
+import { createMockPool, createMockQueryResult } from '@silverhand/slonik';
+import type {
+  PrimitiveValueExpression,
+  TaggedTemplateLiteralInvocation,
+} from '@silverhand/slonik/dist/src/types.js';
+import type { Context, Middleware, MiddlewareType } from 'koa';
+import Koa from 'koa';
+import type { IRouterParamContext } from 'koa-router';
+import Router from 'koa-router';
 import request from 'supertest';
 
-import { AuthedRouter, AnonymousRouter } from '@/routes/types';
+import type { AnonymousRouter, ManagementApiRouter } from '#src/routes/types.js';
+import type TenantContext from '#src/tenants/TenantContext.js';
+import type { Options } from '#src/test-utils/jest-koa-mocks/create-mock-context.js';
+import createMockContext from '#src/test-utils/jest-koa-mocks/create-mock-context.js';
+import { MockTenant } from '#src/test-utils/tenant.js';
 
 /**
  *  Slonik Query Mock Utils
@@ -16,13 +26,35 @@ export const expectSqlAssert = (sql: string, expectSql: string) => {
     sql
       .split('\n')
       .map((row) => row.trim())
-      .filter((row) => row)
+      .filter(Boolean)
   ).toEqual(
     expectSql
       .split('\n')
       .map((row) => row.trim())
-      .filter((row) => row)
+      .filter(Boolean)
   );
+};
+
+export const expectSqlTokenAssert = (
+  sql: TaggedTemplateLiteralInvocation,
+  expectSql: string,
+  values?: unknown[]
+) => {
+  expect(
+    sql.sql
+      .split('\n')
+      .map((row) => row.trim())
+      .filter(Boolean)
+  ).toEqual(
+    expectSql
+      .split('\n')
+      .map((row) => row.trim())
+      .filter(Boolean)
+  );
+
+  if (values) {
+    expect(sql.values).toStrictEqual(values);
+  }
 };
 
 export type QueryType = (
@@ -58,13 +90,18 @@ export const emptyMiddleware =
   };
 
 export const createContextWithRouteParameters = (
-  mockContestOptions?: Options<Record<string, unknown>>
+  mockContextOptions?: Options<Record<string, unknown>>
 ): Context & IRouterParamContext => {
-  const ctx = createMockContext(mockContestOptions);
+  const ctx = createMockContext(mockContextOptions);
 
   return {
     ...ctx,
+    set: ctx.set,
+    path: ctx.path,
+    URL: ctx.URL,
+    cookies: ctx.cookies,
     params: {},
+    headers: {},
     router: new Router(),
     _matchedRoute: undefined,
     _matchedRouteName: undefined,
@@ -74,46 +111,24 @@ export const createContextWithRouteParameters = (
 /**
  * Supertest Request Mock Utils
  **/
-type RouteLauncher<T extends AuthedRouter | AnonymousRouter> = (router: T) => void;
-
-type ProviderRouteLauncher<T extends AuthedRouter | AnonymousRouter> = (
+type RouteLauncher<T extends ManagementApiRouter | AnonymousRouter> = (
   router: T,
-  provider: Provider
+  tenant: TenantContext
 ) => void;
 
-export function createRequester(
-  payload:
-    | {
-        anonymousRoutes?: RouteLauncher<AnonymousRouter> | Array<RouteLauncher<AnonymousRouter>>;
-        authedRoutes?: RouteLauncher<AuthedRouter> | Array<RouteLauncher<AuthedRouter>>;
-        middlewares?: Middleware[];
-      }
-    | {
-        anonymousRoutes?:
-          | ProviderRouteLauncher<AnonymousRouter>
-          | Array<ProviderRouteLauncher<AnonymousRouter>>;
-        authedRoutes?: RouteLauncher<AuthedRouter> | Array<RouteLauncher<AuthedRouter>>;
-        middlewares?: Middleware[];
-        provider: Provider;
-      }
-): request.SuperTest<request.Test>;
-
-export function createRequester({
+export function createRequester<StateT, ContextT extends IRouterParamContext, ResponseT>({
   anonymousRoutes,
   authedRoutes,
-  provider,
   middlewares,
+  tenantContext,
 }: {
-  anonymousRoutes?:
-    | RouteLauncher<AnonymousRouter>
-    | Array<RouteLauncher<AnonymousRouter>>
-    | ProviderRouteLauncher<AnonymousRouter>
-    | Array<ProviderRouteLauncher<AnonymousRouter>>;
-  authedRoutes?: RouteLauncher<AuthedRouter> | Array<RouteLauncher<AuthedRouter>>;
-  provider?: Provider;
-  middlewares?: Middleware[];
-}): request.SuperTest<request.Test> {
+  anonymousRoutes?: RouteLauncher<AnonymousRouter> | Array<RouteLauncher<AnonymousRouter>>;
+  authedRoutes?: RouteLauncher<ManagementApiRouter> | Array<RouteLauncher<ManagementApiRouter>>;
+  middlewares?: Array<Middleware<StateT, ContextT, ResponseT>>;
+  tenantContext?: TenantContext;
+}) {
   const app = new Koa();
+  const tenant = tenantContext ?? new MockTenant();
 
   if (middlewares) {
     for (const middleware of middlewares) {
@@ -125,23 +140,23 @@ export function createRequester({
     const anonymousRouter: AnonymousRouter = new Router();
 
     for (const route of Array.isArray(anonymousRoutes) ? anonymousRoutes : [anonymousRoutes]) {
-      if (provider) {
-        route(anonymousRouter, provider);
-      } else {
-        // For test use only
-        // eslint-disable-next-line no-restricted-syntax
-        (route as RouteLauncher<AnonymousRouter>)(anonymousRouter);
-      }
+      route(anonymousRouter, tenant);
     }
 
     app.use(anonymousRouter.routes()).use(anonymousRouter.allowedMethods());
   }
 
   if (authedRoutes) {
-    const authRouter: AuthedRouter = new Router();
+    const authRouter: ManagementApiRouter = new Router();
+
+    authRouter.use(async (ctx, next) => {
+      ctx.auth = { type: 'user', id: 'foo', scopes: new Set() };
+
+      return next();
+    });
 
     for (const route of Array.isArray(authedRoutes) ? authedRoutes : [authedRoutes]) {
-      route(authRouter);
+      route(authRouter, tenant);
     }
 
     app.use(authRouter.routes()).use(authRouter.allowedMethods());
@@ -149,3 +164,5 @@ export function createRequester({
 
   return request(app.callback());
 }
+
+export const randomString = (length = 10) => crypto.randomBytes(length).toString('hex');

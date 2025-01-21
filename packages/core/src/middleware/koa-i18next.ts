@@ -1,13 +1,13 @@
-import i18next from 'i18next';
-import { MiddlewareType } from 'koa';
-import { IRouterParamContext } from 'koa-router';
+import type { MiddlewareType } from 'koa';
+import type { IRouterParamContext } from 'koa-router';
 
-import detectLanguage from '@/i18n/detect-language';
+import detectLanguage from '#src/i18n/detect-language.js';
+import { i18next } from '#src/utils/i18n.js';
 
-interface LanguageUtils {
+type LanguageUtils = {
   formatLanguageCode(code: string): string;
   isSupportedCode(code: string): boolean;
-}
+};
 
 export type WithI18nContext<ContextT extends IRouterParamContext = IRouterParamContext> =
   ContextT & {
@@ -17,7 +17,7 @@ export type WithI18nContext<ContextT extends IRouterParamContext = IRouterParamC
 export default function koaI18next<
   StateT,
   ContextT extends IRouterParamContext,
-  ResponseBodyT
+  ResponseBodyT,
 >(): MiddlewareType<StateT, WithI18nContext<ContextT>, ResponseBodyT> {
   return async (ctx, next) => {
     const languages = detectLanguage(ctx);

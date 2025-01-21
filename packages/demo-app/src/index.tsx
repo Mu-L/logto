@@ -1,8 +1,7 @@
-import ReactDOM from 'react-dom';
-// eslint-disable-next-line import/no-unassigned-import
-import '@logto/shared/declaration';
+import { createRoot } from 'react-dom/client';
 
 import App from './App';
 
 const app = document.querySelector('#app');
-ReactDOM.render(<App />, app);
+const root = app && createRoot(app);
+root?.render(<App />);

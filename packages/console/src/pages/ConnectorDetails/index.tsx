@@ -1,173 +1,210 @@
-import { AppearanceMode, ConnectorDto, ConnectorType } from '@logto/schemas';
-import classNames from 'classnames';
-import { useState } from 'react';
+import { ServiceConnector } from '@logto/connector-kit';
+import { ConnectorType } from '@logto/schemas';
+import type { ConnectorFactoryResponse, ConnectorResponse } from '@logto/schemas';
+import { condArray, conditional } from '@silverhand/essentials';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import useSWR, { useSWRConfig } from 'swr';
 
-import ActionMenu, { ActionMenuItem } from '@/components/ActionMenu';
-import Button from '@/components/Button';
-import Card from '@/components/Card';
-import CopyToClipboard from '@/components/CopyToClipboard';
-import DetailsSkeleton from '@/components/DetailsSkeleton';
+import Delete from '@/assets/icons/delete.svg?react';
+import File from '@/assets/icons/file.svg?react';
+import Reset from '@/assets/icons/reset.svg?react';
+import ConnectorLogo from '@/components/ConnectorLogo';
+import CreateConnectorForm from '@/components/CreateConnectorForm';
+import DeleteConnectorConfirmModal from '@/components/DeleteConnectorConfirmModal';
+import DetailsPage from '@/components/DetailsPage';
+import DetailsPageHeader, {
+  type MenuItem as ActionMenuItemItem,
+} from '@/components/DetailsPage/DetailsPageHeader';
 import Drawer from '@/components/Drawer';
-import LinkButton from '@/components/LinkButton';
 import Markdown from '@/components/Markdown';
-import Status from '@/components/Status';
-import TabNav, { TabNavItem } from '@/components/TabNav';
+import PageMeta from '@/components/PageMeta';
 import UnnamedTrans from '@/components/UnnamedTrans';
-import useApi, { RequestError } from '@/hooks/use-api';
+import { ConnectorsTabs } from '@/consts/page-tabs';
+import TabNav, { TabNavItem } from '@/ds-components/TabNav';
+import type { RequestError } from '@/hooks/use-api';
+import useApi from '@/hooks/use-api';
+import useConnectorApi from '@/hooks/use-connector-api';
 import useConnectorInUse from '@/hooks/use-connector-in-use';
-import { useTheme } from '@/hooks/use-theme';
-import Back from '@/icons/Back';
-import Delete from '@/icons/Delete';
-import More from '@/icons/More';
-import Reset from '@/icons/Reset';
-import * as detailsStyles from '@/scss/details.module.scss';
+import useTenantPathname from '@/hooks/use-tenant-pathname';
 
-import CreateForm from '../Connectors/components/CreateForm';
-import ConnectorContent from './components/ConnectorContent';
-import ConnectorTabs from './components/ConnectorTabs';
-import ConnectorTypeName from './components/ConnectorTypeName';
-import * as styles from './index.module.scss';
+import ConnectorContent from './ConnectorContent';
+import ConnectorTabs from './ConnectorTabs';
+import ConnectorTypeName from './ConnectorTypeName';
+import EmailUsage from './EmailUsage';
+import styles from './index.module.scss';
 
-const ConnectorDetails = () => {
+// TODO: refactor path-related operation utils in both Connectors and ConnectorDetails page
+const getConnectorsPathname = (isSocial: boolean) =>
+  `/connectors/${isSocial ? ConnectorsTabs.Social : ConnectorsTabs.Passwordless}`;
+
+function ConnectorDetails() {
+  const { pathname } = useLocation();
   const { connectorId } = useParams();
+  const { createConnector } = useConnectorApi();
   const { mutate: mutateGlobal } = useSWRConfig();
   const [isDeleted, setIsDeleted] = useState(false);
   const [isReadMeOpen, setIsReadMeOpen] = useState(false);
   const [isSetupOpen, setIsSetupOpen] = useState(false);
   const { t } = useTranslation(undefined, { keyPrefix: 'admin_console' });
-  const { data, error, mutate } = useSWR<ConnectorDto, RequestError>(
-    connectorId && `/api/connectors/${connectorId}`
+  const { data, error, mutate } = useSWR<ConnectorResponse, RequestError>(
+    connectorId && `api/connectors/${connectorId}`,
+    { keepPreviousData: true }
   );
-  const inUse = useConnectorInUse(data?.type, data?.target);
-  const isLoading = !data && !error;
+  const {
+    data: connectorFactory,
+    error: fetchConnectorFactoryError,
+    mutate: mutateConnectorFactory,
+  } = useSWR<ConnectorFactoryResponse, RequestError>(
+    data?.isStandard && `api/connector-factories/${data.connectorId}`
+  );
+
+  const requestError = error ?? fetchConnectorFactoryError;
+
+  const { isConnectorInUse } = useConnectorInUse();
+  const inUse = isConnectorInUse(data);
+  const isLoading =
+    (!data && !error) || (data?.isStandard && !connectorFactory && !fetchConnectorFactoryError);
+
   const api = useApi();
-  const navigate = useNavigate();
-  const theme = useTheme();
+  const { navigate } = useTenantPathname();
+  const isSocial = data?.type === ConnectorType.Social;
+
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    setIsDeleteAlertOpen(false);
+  }, [pathname]);
 
   const handleDelete = async () => {
-    if (!connectorId) {
+    if (!connectorId || isDeleting) {
       return;
     }
+    setIsDeleting(true);
 
-    await api
-      .patch(`/api/connectors/${connectorId}/enabled`, {
-        json: { enabled: false },
-      })
-      .json<ConnectorDto>();
-    toast.success(t('connector_details.connector_deleted'));
+    try {
+      await api.delete(`api/connectors/${connectorId}`).json<ConnectorResponse>();
 
-    await mutateGlobal('/api/connectors');
-    setIsDeleted(true);
+      setIsDeleted(true);
 
-    if (data?.type === ConnectorType.Social) {
-      navigate(`/connectors/social`, { replace: true });
-    } else {
-      navigate(`/connectors`, { replace: true });
+      toast.success(t('connector_details.connector_deleted'));
+      await mutateGlobal('api/connectors');
+
+      navigate(getConnectorsPathname(isSocial), {
+        replace: true,
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
+  if (!connectorId) {
+    return null;
+  }
+
   return (
-    <div className={detailsStyles.container}>
-      <LinkButton
-        to={data?.type === ConnectorType.Social ? '/connectors/social' : '/connectors'}
-        icon={<Back />}
-        title="connector_details.back_to_connectors"
-        className={styles.backLink}
-      />
-      {isLoading && <DetailsSkeleton />}
-      {!data && error && <div>{`error occurred: ${error.body?.message ?? error.message}`}</div>}
-      {data?.type === ConnectorType.Social && (
-        <ConnectorTabs target={data.target} connectorId={data.id} />
-      )}
+    <DetailsPage
+      backLink={getConnectorsPathname(isSocial)}
+      backLinkTitle="connector_details.back_to_connectors"
+      isLoading={isLoading}
+      error={requestError}
+      onRetry={() => {
+        void mutate();
+        void mutateConnectorFactory();
+      }}
+    >
+      <PageMeta titleKey="connector_details.page_title" />
+      {isSocial && <ConnectorTabs target={data.target} connectorId={data.id} />}
       {data && (
-        <Card className={styles.header}>
-          <div className={styles.logoContainer}>
-            <img
-              src={theme === AppearanceMode.DarkMode && data.logoDark ? data.logoDark : data.logo}
-              className={styles.logo}
-            />
-          </div>
-          <div className={styles.metadata}>
-            <div>
-              <div className={styles.name}>
-                <UnnamedTrans resource={data.name} />
-              </div>
-            </div>
-            <div>
-              <ConnectorTypeName type={data.type} />
-              <div className={styles.verticalBar} />
-              {inUse !== undefined && (
-                <Status status={inUse ? 'enabled' : 'disabled'} variant="outlined">
-                  {t('connectors.connector_status', {
-                    context: inUse ? 'in_use' : 'not_in_use',
-                  })}
-                </Status>
-              )}
-              <div className={styles.verticalBar} />
-              <div className={styles.text}>ID</div>
-              <CopyToClipboard value={data.id} />
-            </div>
-          </div>
-          <div className={styles.operations}>
-            <Button
-              title="connector_details.check_readme"
-              size="large"
-              onClick={() => {
-                setIsReadMeOpen(true);
-              }}
-            />
-            <Drawer
-              title="connectors.title"
-              subtitle="connectors.subtitle"
-              isOpen={isReadMeOpen}
-              onClose={() => {
-                setIsReadMeOpen(false);
-              }}
-            >
-              <Markdown className={styles.readme}>{data.readme}</Markdown>
-            </Drawer>
-            <ActionMenu
-              buttonProps={{ icon: <More className={styles.moreIcon} />, size: 'large' }}
-              title={t('general.more_options')}
-            >
-              {data.type !== ConnectorType.Social && (
-                <ActionMenuItem
-                  icon={<Reset />}
-                  iconClassName={styles.resetIcon}
-                  onClick={() => {
-                    setIsSetupOpen(true);
-                  }}
-                >
-                  {t(
-                    data.type === ConnectorType.SMS
-                      ? 'connector_details.options_change_sms'
-                      : 'connector_details.options_change_email'
-                  )}
-                </ActionMenuItem>
-              )}
-              <ActionMenuItem icon={<Delete />} type="danger" onClick={handleDelete}>
-                {t('general.delete')}
-              </ActionMenuItem>
-            </ActionMenu>
-            <CreateForm
-              isOpen={isSetupOpen}
-              type={data.type}
-              onClose={(connectorId?: string) => {
-                setIsSetupOpen(false);
-                navigate(`/connectors/${connectorId ?? ''}`);
-              }}
-            />
-          </div>
-        </Card>
-      )}
-      {data && (
-        <Card className={classNames(styles.body, detailsStyles.body)}>
+        <>
+          <DetailsPageHeader
+            icon={<ConnectorLogo data={data} size="large" />}
+            title={<UnnamedTrans resource={data.name} />}
+            primaryTag={<ConnectorTypeName type={data.type} />}
+            statusTag={{
+              status: inUse ? 'success' : 'info',
+              text: inUse
+                ? 'connectors.connector_status_in_use'
+                : 'connectors.connector_status_not_in_use',
+            }}
+            identifier={{ name: 'ID', value: data.id }}
+            additionalActionButton={conditional(
+              data.connectorId !== ServiceConnector.Email && {
+                title: 'connector_details.check_readme',
+                icon: <File />,
+                onClick: () => {
+                  setIsReadMeOpen(true);
+                },
+              }
+            )}
+            additionalCustomElement={conditional(
+              data.type === ConnectorType.Email && data.usage !== undefined && (
+                <EmailUsage usage={data.usage} />
+              )
+            )}
+            actionMenuItems={[
+              ...condArray(
+                !isSocial && [
+                  {
+                    title:
+                      data.type === ConnectorType.Sms
+                        ? 'connector_details.options_change_sms'
+                        : 'connector_details.options_change_email',
+                    icon: <Reset />,
+                    onClick: () => {
+                      setIsSetupOpen(true);
+                    },
+                  } satisfies ActionMenuItemItem,
+                ]
+              ),
+              {
+                type: 'danger',
+                title: 'general.delete',
+                icon: <Delete />,
+                onClick: () => {
+                  setIsDeleteAlertOpen(true);
+                },
+              },
+            ]}
+          />
+          <Drawer
+            title="connectors.title"
+            subtitle="connectors.subtitle"
+            isOpen={isReadMeOpen}
+            onClose={() => {
+              setIsReadMeOpen(false);
+            }}
+          >
+            <Markdown className={styles.readme}>{data.readme}</Markdown>
+          </Drawer>
+          <CreateConnectorForm
+            isOpen={isSetupOpen}
+            type={data.type}
+            onClose={async (connectorId?: string) => {
+              setIsSetupOpen(false);
+
+              if (connectorId) {
+                /**
+                 * Note:
+                 * The "Email Service Connector" is a built-in connector that can be directly created without the need for setup in the guide.
+                 */
+                if (connectorId === ServiceConnector.Email) {
+                  const created = await createConnector({ connectorId });
+                  navigate(`/connectors/${ConnectorsTabs.Passwordless}/${created.id}`, {
+                    replace: true,
+                  });
+                  return;
+                }
+
+                navigate(`${getConnectorsPathname(isSocial)}/guide/${connectorId}`);
+              }
+            }}
+          />
           <TabNav>
-            <TabNavItem href={`/connectors/${connectorId ?? ''}`}>
+            <TabNavItem href={`${getConnectorsPathname(isSocial)}/${connectorId}`}>
               {t('general.settings_nav')}
             </TabNavItem>
           </TabNav>
@@ -178,10 +215,20 @@ const ConnectorDetails = () => {
               void mutate(connector);
             }}
           />
-        </Card>
+          <DeleteConnectorConfirmModal
+            data={data}
+            isInUse={inUse}
+            isOpen={isDeleteAlertOpen}
+            isLoading={isDeleting}
+            onCancel={() => {
+              setIsDeleteAlertOpen(false);
+            }}
+            onConfirm={handleDelete}
+          />
+        </>
       )}
-    </div>
+    </DetailsPage>
   );
-};
+}
 
 export default ConnectorDetails;

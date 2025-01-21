@@ -1,48 +1,59 @@
-import { UserRole, Users } from '@logto/schemas';
-import { createMockPool, createMockQueryResult, sql } from 'slonik';
+import { Users } from '@logto/schemas';
+import { createMockPool, createMockQueryResult, sql } from '@silverhand/slonik';
+import Sinon from 'sinon';
 
-import { mockUser } from '@/__mocks__';
-import { convertToIdentifiers, convertToPrimitiveOrSql } from '@/database/utils';
-import envSet from '@/env-set';
-import { DeletionError } from '@/errors/SlonikError';
-import { expectSqlAssert, QueryType } from '@/utils/test-utils';
+import { mockUser } from '#src/__mocks__/index.js';
+import { EnvSet } from '#src/env-set/index.js';
+import { DeletionError } from '#src/errors/SlonikError/index.js';
+import { convertToIdentifiers } from '#src/utils/sql.js';
+import type { QueryType } from '#src/utils/test-utils.js';
+import { expectSqlAssert } from '#src/utils/test-utils.js';
 
-import {
+const { jest } = import.meta;
+
+const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
+
+const pool = createMockPool({
+  query: async (sql, values) => {
+    return mockQuery(sql, values);
+  },
+});
+
+const { createUserQueries } = await import('./user.js');
+const {
   findUserByUsername,
   findUserByEmail,
   findUserByPhone,
-  findUserById,
   findUserByIdentity,
   hasUser,
   hasUserWithId,
   hasUserWithEmail,
   hasUserWithIdentity,
   hasUserWithPhone,
-  insertUser,
-  countUsers,
-  findUsers,
   updateUserById,
   deleteUserById,
   deleteUserIdentity,
-} from './user';
+} = createUserQueries(pool);
 
-const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
-
-jest.spyOn(envSet, 'pool', 'get').mockReturnValue(
-  createMockPool({
-    query: async (sql, values) => {
-      return mockQuery(sql, values);
-    },
-  })
-);
+const stubIsCaseSensitiveUsername = (isCaseSensitiveUsername: boolean) =>
+  Sinon.stub(EnvSet, 'values').value({
+    ...EnvSet.values,
+    isCaseSensitiveUsername,
+  });
 
 describe('user query', () => {
+  beforeEach(() => {
+    stubIsCaseSensitiveUsername(true);
+  });
+
   const { table, fields } = convertToIdentifiers(Users);
-  const dbvalue = {
+  const databaseValue = {
     ...mockUser,
-    roleNames: JSON.stringify(mockUser.roleNames),
+    profile: JSON.stringify({}),
     identities: JSON.stringify(mockUser.identities),
     customData: JSON.stringify(mockUser.customData),
+    logtoConfig: JSON.stringify(mockUser.logtoConfig),
+    mfaVerifications: JSON.stringify(mockUser.mfaVerifications),
   };
 
   it('findUserByUsername', async () => {
@@ -56,29 +67,45 @@ describe('user query', () => {
       expectSqlAssert(sql, expectSql.sql);
       expect(values).toEqual([mockUser.username]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    await expect(findUserByUsername(mockUser.username!)).resolves.toEqual(dbvalue);
+    await expect(findUserByUsername(mockUser.username!)).resolves.toEqual(databaseValue);
+  });
+
+  it('findUserByUsername (case insensitive)', async () => {
+    stubIsCaseSensitiveUsername(false);
+    const expectSql = sql`
+      select ${sql.join(Object.values(fields), sql`,`)}
+      from ${table}
+      where lower(${fields.username})=lower($1)
+    `;
+
+    mockQuery.mockImplementationOnce(async (sql, values) => {
+      expectSqlAssert(sql, expectSql.sql);
+      expect(values).toEqual([mockUser.username]);
+
+      return createMockQueryResult([databaseValue]);
+    });
+
+    await expect(findUserByUsername(mockUser.username!)).resolves.toEqual(databaseValue);
   });
 
   it('findUserByEmail', async () => {
     const expectSql = sql`
       select ${sql.join(Object.values(fields), sql`,`)}
       from ${table}
-      where ${fields.primaryEmail}=$1
+      where lower(${fields.primaryEmail})=lower($1)
     `;
 
     mockQuery.mockImplementationOnce(async (sql, values) => {
       expectSqlAssert(sql, expectSql.sql);
       expect(values).toEqual([mockUser.primaryEmail]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    await expect(findUserByEmail(mockUser.primaryEmail!)).resolves.toEqual(dbvalue);
+    await expect(findUserByEmail(mockUser.primaryEmail!)).resolves.toEqual(databaseValue);
   });
 
   it('findUserByPhone', async () => {
@@ -92,28 +119,10 @@ describe('user query', () => {
       expectSqlAssert(sql, expectSql.sql);
       expect(values).toEqual([mockUser.primaryPhone]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    await expect(findUserByPhone(mockUser.primaryPhone!)).resolves.toEqual(dbvalue);
-  });
-
-  it('findUserById', async () => {
-    const expectSql = sql`
-      select ${sql.join(Object.values(fields), sql`,`)}
-      from ${table}
-      where ${fields.id}=$1
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([mockUser.id]);
-
-      return createMockQueryResult([dbvalue]);
-    });
-
-    await expect(findUserById(mockUser.id)).resolves.toEqual(dbvalue);
+    await expect(findUserByPhone(mockUser.primaryPhone!)).resolves.toEqual(databaseValue);
   });
 
   it('findUserByIdentity', async () => {
@@ -129,10 +138,10 @@ describe('user query', () => {
       expectSqlAssert(sql, expectSql.sql);
       expect(values).toEqual([mockUser.id]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    await expect(findUserByIdentity(target, mockUser.id)).resolves.toEqual(dbvalue);
+    await expect(findUserByIdentity(target, mockUser.id)).resolves.toEqual(databaseValue);
   });
 
   it('hasUser', async () => {
@@ -151,7 +160,26 @@ describe('user query', () => {
       return createMockQueryResult([{ exists: true }]);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    await expect(hasUser(mockUser.username!)).resolves.toEqual(true);
+  });
+
+  it('hasUser (case insensitive)', async () => {
+    stubIsCaseSensitiveUsername(false);
+    const expectSql = sql`
+      SELECT EXISTS(
+        select ${fields.id}
+        from ${table}
+        where lower(${fields.username})=lower($1)
+      )
+    `;
+
+    mockQuery.mockImplementationOnce(async (sql, values) => {
+      expectSqlAssert(sql, expectSql.sql);
+      expect(values).toEqual([mockUser.username]);
+
+      return createMockQueryResult([{ exists: true }]);
+    });
+
     await expect(hasUser(mockUser.username!)).resolves.toEqual(true);
   });
 
@@ -179,7 +207,7 @@ describe('user query', () => {
       SELECT EXISTS(
         select ${fields.primaryEmail}
         from ${table}
-        where ${fields.primaryEmail}=$1
+        where lower(${fields.primaryEmail})=lower($1)
       )
     `;
 
@@ -190,7 +218,6 @@ describe('user query', () => {
       return createMockQueryResult([{ exists: true }]);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await expect(hasUserWithEmail(mockUser.primaryEmail!)).resolves.toEqual(true);
   });
 
@@ -210,7 +237,6 @@ describe('user query', () => {
       return createMockQueryResult([{ exists: true }]);
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await expect(hasUserWithPhone(mockUser.primaryPhone!)).resolves.toEqual(true);
   });
 
@@ -235,140 +261,6 @@ describe('user query', () => {
     await expect(hasUserWithIdentity(target, mockUser.id)).resolves.toEqual(true);
   });
 
-  it('insertUser', async () => {
-    const expectSql = sql`
-      insert into ${table} (${sql.join(Object.values(fields), sql`, `)})
-      values (${sql.join(
-        Object.values(fields)
-          .slice(0, -1)
-          .map((_, index) => `$${index + 1}`),
-        sql`, `
-      )}, to_timestamp(${Object.values(fields).length}::double precision / 1000))
-      returning *
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-
-      expect(values).toEqual(
-        Users.fieldKeys.map((k) =>
-          k === 'lastSignInAt' ? mockUser[k] : convertToPrimitiveOrSql(k, mockUser[k])
-        )
-      );
-
-      return createMockQueryResult([dbvalue]);
-    });
-
-    await expect(insertUser(mockUser)).resolves.toEqual(dbvalue);
-  });
-
-  it('countUsers', async () => {
-    const search = 'foo';
-    const expectSql = sql`
-      select count(*)
-      from ${table}
-      where ${fields.primaryEmail} like $1 or ${fields.primaryPhone} like $2 or ${fields.username} like $3 or ${fields.name} like $4
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`]);
-
-      return createMockQueryResult([dbvalue]);
-    });
-
-    await expect(countUsers(search)).resolves.toEqual(dbvalue);
-  });
-
-  it('countUsers with hideAdminUser', async () => {
-    const search = 'foo';
-    const expectSql = sql`
-      select count(*)
-      from ${table}
-      where not (${fields.roleNames}::jsonb?$1)
-      and (${fields.primaryEmail} like $2 or ${fields.primaryPhone} like $3 or ${fields.username} like $4 or ${fields.name} like $5)
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([
-        UserRole.Admin,
-        `%${search}%`,
-        `%${search}%`,
-        `%${search}%`,
-        `%${search}%`,
-      ]);
-
-      return createMockQueryResult([dbvalue]);
-    });
-
-    await expect(countUsers(search, true)).resolves.toEqual(dbvalue);
-  });
-
-  it('findUsers', async () => {
-    const search = 'foo';
-    const limit = 100;
-    const offset = 1;
-    const expectSql = sql`
-      select ${sql.join(Object.values(fields), sql`,`)}
-      from ${table}
-      where ${fields.primaryEmail} like $1 or ${fields.primaryPhone} like $2 or ${
-      fields.username
-    } like $3 or ${fields.name} like $4
-      limit $5
-      offset $6
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([
-        `%${search}%`,
-        `%${search}%`,
-        `%${search}%`,
-        `%${search}%`,
-        limit,
-        offset,
-      ]);
-
-      return createMockQueryResult([dbvalue]);
-    });
-
-    await expect(findUsers(limit, offset, search)).resolves.toEqual([dbvalue]);
-  });
-
-  it('findUsers with hideAdminUser', async () => {
-    const search = 'foo';
-    const limit = 100;
-    const offset = 1;
-    const expectSql = sql`
-      select ${sql.join(Object.values(fields), sql`,`)}
-      from ${table}
-      where not (${fields.roleNames}::jsonb?$1)
-      and (${fields.primaryEmail} like $2 or ${fields.primaryPhone} like $3 or ${
-      fields.username
-    } like $4 or ${fields.name} like $5)
-      limit $6
-      offset $7
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([
-        UserRole.Admin,
-        `%${search}%`,
-        `%${search}%`,
-        `%${search}%`,
-        `%${search}%`,
-        limit,
-        offset,
-      ]);
-
-      return createMockQueryResult([dbvalue]);
-    });
-
-    await expect(findUsers(limit, offset, search, true)).resolves.toEqual([dbvalue]);
-  });
-
   it('updateUserById', async () => {
     const username = 'Joe';
     const id = 'foo';
@@ -383,10 +275,10 @@ describe('user query', () => {
       expectSqlAssert(sql, expectSql.sql);
       expect(values).toEqual([username, id]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    await expect(updateUserById(id, { username })).resolves.toEqual(dbvalue);
+    await expect(updateUserById(id, { username })).resolves.toEqual(databaseValue);
   });
 
   it('deleteUserById', async () => {
@@ -400,7 +292,7 @@ describe('user query', () => {
       expectSqlAssert(sql, expectSql.sql);
       expect(values).toEqual([id]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
     await deleteUserById(id);
@@ -430,9 +322,11 @@ describe('user query', () => {
     const { connector1, ...restIdentities } = mockUser.identities;
     const finalDbvalue = {
       ...mockUser,
-      roleNames: JSON.stringify(mockUser.roleNames),
+      profile: JSON.stringify({}),
       identities: JSON.stringify(restIdentities),
       customData: JSON.stringify(mockUser.customData),
+      logtoConfig: JSON.stringify(mockUser.logtoConfig),
+      mfaVerifications: JSON.stringify(mockUser.mfaVerifications),
     };
 
     const expectSql = sql`

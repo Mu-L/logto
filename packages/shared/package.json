@@ -1,49 +1,68 @@
 {
   "name": "@logto/shared",
-  "version": "1.0.0-beta.1",
+  "version": "3.1.2",
   "main": "lib/index.js",
   "author": "Silverhand Inc. <contact@silverhand.io>",
   "license": "MPL-2.0",
+  "type": "module",
   "files": [
-    "declaration",
-    "lib",
-    "scss"
+    "lib"
   ],
-  "private": true,
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts"
+    },
+    "./universal": {
+      "import": "./lib/universal.js",
+      "types": "./lib/universal.d.ts"
+    },
+    "./esm": {
+      "import": "./lib/esm/index.js",
+      "types": "./lib/esm/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "precommit": "lint-staged",
-    "build": "rm -rf lib/ && tsc --p tsconfig.build.json",
+    "build": "rm -rf lib/ && tsc -p tsconfig.build.json",
+    "build:test": "pnpm build",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput --incremental",
     "lint": "eslint --ext .ts src",
     "lint:report": "pnpm lint --format json --output-file report.json",
     "prepack": "pnpm build",
-    "stylelint": "stylelint \"scss/**/*.scss\""
-  },
-  "engines": {
-    "node": "^16.0.0"
+    "test": "vitest src",
+    "test:ci": "pnpm run test --silent --coverage"
   },
   "devDependencies": {
-    "@silverhand/eslint-config": "^0.17.0",
-    "@silverhand/eslint-config-react": "^0.17.0",
-    "@silverhand/essentials": "^1.1.6",
-    "@silverhand/ts-config": "^0.17.0",
-    "@silverhand/ts-config-react": "^0.17.0",
-    "@types/color": "^3.0.3",
-    "@types/node": "^16.3.1",
-    "eslint": "^8.19.0",
-    "lint-staged": "^13.0.0",
-    "postcss": "^8.4.6",
-    "prettier": "^2.3.2",
-    "stylelint": "^14.8.2",
-    "typescript": "^4.6.2"
+    "@jest/globals": "^29.7.0",
+    "@silverhand/eslint-config": "6.0.1",
+    "@silverhand/ts-config": "6.0.0",
+    "@types/node": "^20.9.5",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^8.56.0",
+    "lint-staged": "^15.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": "^20.9.0"
   },
   "eslintConfig": {
-    "extends": "@silverhand/react"
-  },
-  "stylelint": {
-    "extends": "@silverhand/eslint-config-react/.stylelintrc"
+    "extends": "@silverhand",
+    "rules": {
+      "@typescript-eslint/ban-types": "off"
+    }
   },
   "prettier": "@silverhand/eslint-config/.prettierrc",
   "dependencies": {
-    "color": "^4.2.3"
+    "@silverhand/essentials": "^2.9.1",
+    "chalk": "^5.3.0",
+    "find-up": "^7.0.0",
+    "libphonenumber-js": "^1.9.49",
+    "nanoid": "^5.0.9"
   }
 }

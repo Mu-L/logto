@@ -1,9 +1,16 @@
-import { arbitraryObjectGuard } from '@logto/schemas';
-import { conditional, ValuesOf } from '@silverhand/essentials';
-import { OpenAPIV3 } from 'openapi-types';
+import { languages, languageTagGuard } from '@logto/language-kit';
+import { jsonObjectGuard, translationGuard } from '@logto/schemas';
+import type { ValuesOf } from '@silverhand/essentials';
+import { conditional } from '@silverhand/essentials';
+import type { OpenAPIV3 } from 'openapi-types';
 import {
+  ZodDiscriminatedUnion,
+  type ZodStringDef,
+  ZodRecord,
   ZodArray,
   ZodBoolean,
+  ZodEffects,
+  ZodEnum,
   ZodLiteral,
   ZodNativeEnum,
   ZodNullable,
@@ -11,12 +18,46 @@ import {
   ZodObject,
   ZodOptional,
   ZodString,
-  ZodStringDef,
   ZodUnion,
   ZodUnknown,
+  ZodDefault,
+  ZodIntersection,
 } from 'zod';
 
-import RequestError from '@/errors/RequestError';
+import RequestError from '#src/errors/RequestError/index.js';
+
+export const translationSchemas: Record<string, OpenAPIV3.SchemaObject> = {
+  TranslationObject: {
+    type: 'object',
+    properties: {
+      '[translationKey]': {
+        $ref: '#/components/schemas/Translation',
+      },
+    },
+    example: {
+      input: {
+        username: 'Username',
+        password: 'Password',
+      },
+      action: {
+        sign_in: 'Sign In',
+        continue: 'Continue',
+      },
+    },
+  },
+  Translation: {
+    oneOf: [
+      {
+        type: 'string',
+      },
+      // {
+      //   // This self-reference is OK, but it's not supported by Swagger UI
+      //   // See https://github.com/swagger-api/swagger-ui/issues/3325
+      //   $ref: '#/components/schemas/TranslationObject',
+      // },
+    ],
+  },
+};
 
 export type ZodStringCheck = ValuesOf<ZodStringDef['checks']>;
 
@@ -28,16 +69,19 @@ const zodStringCheckToSwaggerFormat = (zodStringCheck: ZodStringCheck) => {
     case 'url':
     case 'uuid':
     case 'cuid':
-    case 'regex':
+    case 'regex': {
       return kind;
+    }
 
     case 'min':
-    case 'max':
+    case 'max': {
       // Do nothing here
       return;
+    }
 
-    default:
+    default: {
       throw new RequestError('swagger.invalid_zod_type', zodStringCheck);
+    }
   }
 };
 
@@ -47,7 +91,7 @@ const zodStringToSwagger = (zodString: ZodString): OpenAPIV3.SchemaObject => {
 
   const formats = checks
     .map((zodStringCheck) => zodStringCheckToSwaggerFormat(zodStringCheck))
-    .filter((format) => format);
+    .filter(Boolean);
   const minLength = checks.find(
     (check): check is { kind: 'min'; value: number } => check.kind === 'min'
   )?.value;
@@ -72,31 +116,55 @@ const zodLiteralToSwagger = (zodLiteral: ZodLiteral<unknown>): OpenAPIV3.SchemaO
   const { value } = zodLiteral;
 
   switch (typeof value) {
-    case 'boolean':
+    case 'boolean': {
       return {
         type: 'boolean',
         format: String(value),
       };
-    case 'number':
+    }
+
+    case 'number': {
       return {
         type: 'number',
         format: String(value),
       };
-    case 'string':
+    }
+
+    case 'string': {
       return {
         type: 'string',
         format: value === '' ? 'empty' : `"${value}"`,
       };
-    default:
+    }
+
+    default: {
       throw new RequestError('swagger.invalid_zod_type', zodLiteral);
+    }
   }
 };
 
-export const zodTypeToSwagger = (config: unknown): OpenAPIV3.SchemaObject => {
-  if (config === arbitraryObjectGuard) {
+// Too many zod types :-)
+// eslint-disable-next-line complexity
+export const zodTypeToSwagger = (
+  config: unknown
+): OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject => {
+  if (config === jsonObjectGuard) {
     return {
       type: 'object',
       description: 'arbitrary',
+    };
+  }
+
+  if (config === translationGuard) {
+    return {
+      $ref: '#/components/schemas/TranslationObject',
+    };
+  }
+
+  if (config === languageTagGuard) {
+    return {
+      type: 'string',
+      enum: Object.keys(languages),
     };
   }
 
@@ -111,9 +179,11 @@ export const zodTypeToSwagger = (config: unknown): OpenAPIV3.SchemaObject => {
     };
   }
 
-  if (config instanceof ZodNativeEnum) {
+  if (config instanceof ZodNativeEnum || config instanceof ZodEnum) {
     return {
       type: 'string',
+      // Type from Zod is any
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       enum: Object.values(config.enum),
     };
   }
@@ -126,7 +196,7 @@ export const zodTypeToSwagger = (config: unknown): OpenAPIV3.SchemaObject => {
     return { example: {} }; // Any data type
   }
 
-  if (config instanceof ZodUnion) {
+  if (config instanceof ZodUnion || config instanceof ZodDiscriminatedUnion) {
     return {
       // ZodUnion.options type is any
       // eslint-disable-next-line no-restricted-syntax
@@ -135,6 +205,8 @@ export const zodTypeToSwagger = (config: unknown): OpenAPIV3.SchemaObject => {
   }
 
   if (config instanceof ZodObject) {
+    // Type from Zod is any
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     const entries = Object.entries(config.shape);
     const required = entries
       .filter(([, value]) => !(value instanceof ZodOptional))
@@ -144,6 +216,13 @@ export const zodTypeToSwagger = (config: unknown): OpenAPIV3.SchemaObject => {
       type: 'object',
       required: conditional(required.length > 0 && required),
       properties: Object.fromEntries(entries.map(([key, value]) => [key, zodTypeToSwagger(value)])),
+    };
+  }
+
+  if (config instanceof ZodRecord) {
+    return {
+      type: 'object',
+      additionalProperties: zodTypeToSwagger(config.valueSchema),
     };
   }
 
@@ -167,6 +246,41 @@ export const zodTypeToSwagger = (config: unknown): OpenAPIV3.SchemaObject => {
   if (config instanceof ZodBoolean) {
     return {
       type: 'boolean',
+    };
+  }
+
+  if (config instanceof ZodRecord) {
+    return {
+      type: 'object',
+      additionalProperties: zodTypeToSwagger(config.valueSchema),
+    };
+  }
+
+  if (config instanceof ZodEffects) {
+    if (config._def.effect.type === 'transform') {
+      return zodTypeToSwagger(config._def.schema);
+    }
+
+    // TO-DO: Improve swagger output for zod schema with refinement (validate through JS functions)
+    if (config._def.effect.type === 'refinement') {
+      return {
+        type: 'object',
+        description: 'Validator function',
+      };
+    }
+  }
+
+  if (config instanceof ZodDefault) {
+    return {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      default: config._def.defaultValue(),
+      ...zodTypeToSwagger(config._def.innerType),
+    };
+  }
+
+  if (config instanceof ZodIntersection) {
+    return {
+      allOf: [zodTypeToSwagger(config._def.left), zodTypeToSwagger(config._def.right)],
     };
   }
 

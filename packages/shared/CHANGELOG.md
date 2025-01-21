@@ -1,66 +1,211 @@
 # Change Log
 
+## 3.1.2
+
+### Patch Changes
+
+- bc2a0ac03: add environment variable to override default database connection timeout
+
+  By default, out database connection timeout is set to 5 seconds, which might not be enough for some network conditions. This change allows users to override the default value by setting the `DATABASE_CONNECTION_TIMEOUT` environment variable.
+
+## 3.1.1
+
+### Patch Changes
+
+- 21bb35b12: add `normalizeError` method to `@logto/shared` package
+
+  Use this method to normalize error objects for logging. This method is useful for logging errors in a consistent format.
+
+## 3.1.0
+
+### Minor Changes
+
+- 31e60811d: use Node 20 LTS for engine requirement.
+
+  Note: We mark it as minor because Logto is shipping with Docker image and it's not a breaking change for users.
+
+### Patch Changes
+
+- acb7fd3fe: Add case sensitive username env variable
+- 9089dbf84: upgrade TypeScript to 5.3.3
+
+## 3.0.0
+
+### Major Changes
+
+- 18181f892: standardize id and secret generators
+
+  - Remove `buildIdGenerator` export from `@logto/shared`
+  - Add `generateStandardSecret` and `generateStandardShortId` exports to `@logto/shared`
+  - Align comment and implementation of `buildIdGenerator` in `@logto/shared`
+    - The comment stated the function will include uppercase letters by default, but it did not; Now it does.
+  - Use `generateStandardSecret` for all secret generation
+
+## 2.0.1
+
+### Patch Changes
+
+- 310698b0d: align cli output for a better looking
+
+## 2.0.0
+
+### Major Changes
+
+- 30033421c: - connector-kit: add `DemoConnector` type and demo connector ids
+  - core-kit: remove nanoid utils, add tenant model utils
+  - shared: remove models, add database types and universal export
+
+### Patch Changes
+
+- 4945b0be2: Apply security headers
+
+  Apply security headers to logto http request response using (helmetjs)[https://helmetjs.github.io/].
+
+  - [x] crossOriginOpenerPolicy
+  - [x] crossOriginEmbedderPolicy
+  - [x] crossOriginResourcePolicy
+  - [x] hidePoweredBy
+  - [x] hsts
+  - [x] ieNoOpen
+  - [x] noSniff
+  - [x] referrerPolicy
+  - [x] xssFilter
+  - [x] Content-Security-Policy
+
+## 1.0.3
+
+### Patch Changes
+
+- @logto/schemas@1.1.0
+
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [5b4da1e3d]
+  - @logto/schemas@1.0.7
+
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [621b09ba1]
+  - @logto/schemas@1.0.1
+
+## 1.0.0
+
+### Major Changes
+
+- 1c9160112: Packages are now ESM.
+
+### Minor Changes
+
+- 343b1090f: Add demo social connectors for new tenant
+- 343b1090f: Allow admin tenant admin to create tenants without limitation
+
+### Patch Changes
+
+- 38970fb88: Fix a Sign-in experience bug that may block some users to sign in.
+- 343b1090f: **Seed data for cloud**
+
+  - cli!: remove `oidc` option for `database seed` command as it's unused
+  - cli: add hidden `--cloud` option for `database seed` command to init cloud data
+  - cli, cloud: appending Redirect URIs to Admin Console will deduplicate values before update
+  - move `UrlSet` and `GlobalValues` to `@logto/shared`
+
+- Updated dependencies [343b1090f]
+- Updated dependencies [e63f5f8b0]
+- Updated dependencies [f41fd3f05]
+- Updated dependencies [343b1090f]
+- Updated dependencies [343b1090f]
+- Updated dependencies [c12717412]
+- Updated dependencies [343b1090f]
+- Updated dependencies [38970fb88]
+- Updated dependencies [343b1090f]
+- Updated dependencies [343b1090f]
+- Updated dependencies [343b1090f]
+- Updated dependencies [1c9160112]
+- Updated dependencies [1c9160112]
+- Updated dependencies [7fb689b73]
+- Updated dependencies [343b1090f]
+- Updated dependencies [f41fd3f05]
+- Updated dependencies [f41fd3f05]
+- Updated dependencies [2d45cc3e6]
+  - @logto/schemas@1.0.0
+  - @logto/core-kit@1.1.0
+
+## 1.0.0-rc.1
+
+### Patch Changes
+
+- Updated dependencies [c12717412]
+  - @logto/schemas@1.0.0-rc.1
+
+## 1.0.0-rc.0
+
+### Patch Changes
+
+- Updated dependencies [f41fd3f0]
+- Updated dependencies [f41fd3f0]
+- Updated dependencies [f41fd3f0]
+  - @logto/schemas@1.0.0-rc.0
+
+## 1.0.0-beta.18
+
+### Patch Changes
+
+- Updated dependencies [df9e98dc]
+  - @logto/schemas@1.0.0-beta.18
+
+## 1.0.0-beta.17
+
+### Major Changes
+
+- 1c916011: Packages are now ESM.
+
+### Patch Changes
+
+- Updated dependencies [1c916011]
+- Updated dependencies [1c916011]
+  - @logto/schemas@1.0.0-beta.17
+
+## 1.0.0-beta.16
+
+### Patch Changes
+
+- 38970fb8: Fix a Sign-in experience bug that may block some users to sign in.
+- Updated dependencies [38970fb8]
+  - @logto/schemas@1.0.0-beta.16
+
+## 1.0.0-beta.15
+
+### Patch Changes
+
+- Updated dependencies
+  - @logto/schemas@1.0.0-beta.15
+
+## 1.0.0-beta.14
+
+### Patch Changes
+
+- Updated dependencies [2d45cc3e]
+  - @logto/schemas@1.0.0-beta.14
+
+## 1.0.0-beta.13
+
+### Patch Changes
+
+- @logto/schemas@1.0.0-beta.13
+
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
-## [1.0.0-beta.1](https://github.com/logto-io/logto/compare/v1.0.0-beta.0...v1.0.0-beta.1) (2022-07-19)
-
-**Note:** Version bump only for package @logto/shared
-
-
-
-
-
-## [1.0.0-beta.0](https://github.com/logto-io/logto/compare/v1.0.0-alpha.4...v1.0.0-beta.0) (2022-07-14)
-
-**Note:** Version bump only for package @logto/shared
-
-
-
-
-
-## [1.0.0-alpha.3](https://github.com/logto-io/logto/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2022-07-07)
-
-**Note:** Version bump only for package @logto/shared
-
-
-
-
-
-### [0.1.2-alpha.5](https://github.com/logto-io/logto/compare/v0.1.2-alpha.4...v0.1.2-alpha.5) (2022-07-03)
-
-**Note:** Version bump only for package @logto/shared
-
-
-
-
-
-### [0.1.2-alpha.1](https://github.com/logto-io/logto/compare/v0.1.2-alpha.0...v0.1.2-alpha.1) (2022-07-02)
-
-**Note:** Version bump only for package @logto/shared
-
-
-
-
-
-### [0.1.1-alpha.0](https://github.com/logto-io/logto/compare/v0.1.0-internal...v0.1.1-alpha.0) (2022-07-01)
-
-
-### Features
-
-* **console,ui:** generate dark mode color in console ([#1231](https://github.com/logto-io/logto/issues/1231)) ([f72b21d](https://github.com/logto-io/logto/commit/f72b21d1602ab0fb35ef3e7d84f6c8ebd7e18b08))
-* **console:** add details summary component in guides ([693c4f0](https://github.com/logto-io/logto/commit/693c4f0422eb312190f2c7b0673e3ceaa8c41213))
-* **core,shared:** get /dashboard/users/active ([#953](https://github.com/logto-io/logto/issues/953)) ([1420bb2](https://github.com/logto-io/logto/commit/1420bb28cec9c0e20b4d0645a58e436135f87c83))
-* **demo-app:** implement (part 2) ([85a055e](https://github.com/logto-io/logto/commit/85a055efa4358cfb69c0d74f7aeaeb0bade024af))
-* **demo-app:** implementation ([#982](https://github.com/logto-io/logto/issues/982)) ([7f4f4f8](https://github.com/logto-io/logto/commit/7f4f4f84addf8a25c3d30f1ac3ceeef460afcf17))
-* **demo-app:** init ([#979](https://github.com/logto-io/logto/issues/979)) ([ad0aa8e](https://github.com/logto-io/logto/commit/ad0aa8e0c20a8d60f095b477e942b724fb53ca7d))
-* **shared,phrases-ui:** not allow hyphens in username ([#1319](https://github.com/logto-io/logto/issues/1319)) ([5e81966](https://github.com/logto-io/logto/commit/5e819665c7c1d584ff5cff25e4e0723122be78b2))
-* update field check rules ([#854](https://github.com/logto-io/logto/issues/854)) ([85a407c](https://github.com/logto-io/logto/commit/85a407c5f6f76fed0513acd6fb41943413935b5a))
-
+## [1.0.0-beta.12](https://github.com/logto-io/logto/compare/v1.0.0-beta.11...v1.0.0-beta.12) (2022-10-19)
 
 ### Bug Fixes
 
-* `lint:report` script ([#730](https://github.com/logto-io/logto/issues/730)) ([3b17324](https://github.com/logto-io/logto/commit/3b17324d189b2fe47985d0bee8b37b4ef1dbdd2b))
-* **console:** dashboard chart style ([#1177](https://github.com/logto-io/logto/issues/1177)) ([cf47044](https://github.com/logto-io/logto/commit/cf470446e4458e748bbf6384adb96d69805a1991)), closes [#1178](https://github.com/logto-io/logto/issues/1178)
-* **console:** new platform tab colors ([#1158](https://github.com/logto-io/logto/issues/1158)) ([1bb770f](https://github.com/logto-io/logto/commit/1bb770fd1fa364f12c1c56a8542d36a3cf9647fe))
-* **core:** remove name regex ([#1109](https://github.com/logto-io/logto/issues/1109)) ([a790248](https://github.com/logto-io/logto/commit/a790248c091e444614652b08b05686e9934cb639))
+- make packages public ([e24fd04](https://github.com/logto-io/logto/commit/e24fd0479bc20c92bd38b5e214abe441404ce496))
+
+## [1.0.0-beta.11](https://github.com/logto-io/logto/compare/v1.0.0-beta.10...v1.0.0-beta.11) (2022-10-19)
+
+**Note:** Version bump only for package @logto/shared

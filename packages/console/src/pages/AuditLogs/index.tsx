@@ -1,18 +1,18 @@
 import AuditLogTable from '@/components/AuditLogTable';
-import Card from '@/components/Card';
-import CardTitle from '@/components/CardTitle';
+import PageMeta from '@/components/PageMeta';
+import CardTitle from '@/ds-components/CardTitle';
+import pageLayout from '@/scss/page-layout.module.scss';
 
-import * as styles from './index.module.scss';
-
-const AuditLogs = () => {
+function AuditLogs() {
   return (
-    <Card className={styles.card}>
-      <div className={styles.headline}>
+    <div className={pageLayout.container}>
+      <PageMeta titleKey="logs.page_title" />
+      <div className={pageLayout.headline}>
         <CardTitle title="logs.title" subtitle="logs.subtitle" />
       </div>
-      <AuditLogTable />
-    </Card>
+      <AuditLogTable className={pageLayout.table} />
+    </div>
   );
-};
+}
 
 export default AuditLogs;

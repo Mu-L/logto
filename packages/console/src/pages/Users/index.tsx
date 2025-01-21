@@ -1,168 +1,179 @@
-import { User } from '@logto/schemas';
-import { conditional, conditionalString } from '@silverhand/essentials';
-import classNames from 'classnames';
-import { useState } from 'react';
+import type { User } from '@logto/schemas';
+import { conditional } from '@silverhand/essentials';
 import { useTranslation } from 'react-i18next';
-import Modal from 'react-modal';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import useSWR from 'swr';
 
+import Plus from '@/assets/icons/plus.svg?react';
+import UsersEmptyDark from '@/assets/images/users-empty-dark.svg?react';
+import UsersEmpty from '@/assets/images/users-empty.svg?react';
 import ApplicationName from '@/components/ApplicationName';
-import Button from '@/components/Button';
-import Card from '@/components/Card';
-import CardTitle from '@/components/CardTitle';
-import DateTime from '@/components/DateTime';
+import { LocaleDate } from '@/components/DateTime';
+import EmptyDataPlaceholder from '@/components/EmptyDataPlaceholder';
 import ItemPreview from '@/components/ItemPreview';
-import Pagination from '@/components/Pagination';
-import Search from '@/components/Search';
-import TableEmpty from '@/components/Table/TableEmpty';
-import TableError from '@/components/Table/TableError';
-import TableLoading from '@/components/Table/TableLoading';
-import { generateAvatarPlaceHolderById } from '@/consts/avatars';
-import { RequestError } from '@/hooks/use-api';
-import Plus from '@/icons/Plus';
-import * as modalStyles from '@/scss/modal.module.scss';
-import * as tableStyles from '@/scss/table.module.scss';
+import ListPage from '@/components/ListPage';
+import UserAvatar from '@/components/UserAvatar';
+import { defaultPageSize } from '@/consts';
+import { UserDetailsTabs } from '@/consts/page-tabs';
+import Button from '@/ds-components/Button';
+import Search from '@/ds-components/Search';
+import TablePlaceholder from '@/ds-components/Table/TablePlaceholder';
+import type { RequestError } from '@/hooks/use-api';
+import useSearchParametersWatcher from '@/hooks/use-search-parameters-watcher';
+import useTenantPathname from '@/hooks/use-tenant-pathname';
+import { buildUrl, formatSearchKeyword } from '@/utils/url';
+import { getUserTitle, getUserSubtitle } from '@/utils/user';
 
 import CreateForm from './components/CreateForm';
-import * as styles from './index.module.scss';
+import SuspendedTag from './components/SuspendedTag';
 
-const pageSize = 20;
+const pageSize = defaultPageSize;
+const usersPathname = '/users';
+const createUserPathname = `${usersPathname}/create`;
+const buildDetailsPathname = (id: string) => `${usersPathname}/${id}/${UserDetailsTabs.Settings}`;
 
-const Users = () => {
-  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+function Users() {
+  const { search } = useLocation();
   const { t } = useTranslation(undefined, { keyPrefix: 'admin_console' });
-  const [query, setQuery] = useSearchParams();
-  const pageIndex = Number(query.get('page') ?? '1');
-  const keyword = query.get('search') ?? '';
-  const { data, error, mutate } = useSWR<[User[], number], RequestError>(
-    `/api/users?page=${pageIndex}&page_size=${pageSize}&hideAdminUser=true${conditionalString(
-      keyword && `&search=${keyword}`
-    )}`
-  );
+
+  const [{ page, keyword }, updateSearchParameters] = useSearchParametersWatcher({
+    page: 1,
+    keyword: '',
+  });
+
+  const url = buildUrl('api/users', {
+    page: String(page),
+    page_size: String(pageSize),
+    ...conditional(keyword && { search: formatSearchKeyword(keyword) }),
+  });
+
+  const { data, error, mutate } = useSWR<[User[], number], RequestError>(url);
   const isLoading = !data && !error;
-  const navigate = useNavigate();
+  const { navigate, match } = useTenantPathname();
   const [users, totalCount] = data ?? [];
+  const isCreating = match(createUserPathname);
 
   return (
-    <Card className={styles.card}>
-      <div className={styles.headline}>
-        <CardTitle title="users.title" subtitle="users.subtitle" />
-        <Button
-          title="users.create"
-          size="large"
-          type="primary"
-          icon={<Plus />}
-          onClick={() => {
-            setIsCreateFormOpen(true);
-          }}
-        />
-        <Modal
-          isOpen={isCreateFormOpen}
-          className={modalStyles.content}
-          overlayClassName={modalStyles.overlay}
-        >
-          <CreateForm
-            onClose={(createdUser, password) => {
-              setIsCreateFormOpen(false);
+    <ListPage
+      title={{
+        title: 'users.title',
+        subtitle: 'users.subtitle',
+      }}
+      pageMeta={{ titleKey: 'users.page_title' }}
+      createButton={{
+        title: 'users.create',
+        onClick: () => {
+          navigate({
+            pathname: createUserPathname,
+            search,
+          });
+        },
+      }}
+      table={{
+        rowGroups: [{ key: 'users', data: users }],
+        rowIndexKey: 'id',
+        isLoading,
+        errorMessage: error?.body?.message ?? error?.message,
+        columns: [
+          {
+            title: t('users.user_name'),
+            dataIndex: 'name',
+            colSpan: 6,
+            render: (user) => {
+              const { id, isSuspended } = user;
 
-              if (createdUser && password) {
-                navigate(`/users/${createdUser.id}?password=${password}`);
-              }
-            }}
-          />
-        </Modal>
-      </div>
-      <div className={styles.filter}>
-        <Search
-          defaultValue={keyword}
-          isClearable={Boolean(keyword)}
-          onSearch={(value) => {
-            setQuery(value ? { search: value } : {});
-          }}
-          onClearSearch={() => {
-            setQuery({});
-          }}
-        />
-      </div>
-      <div className={classNames(styles.tableContainer, tableStyles.scrollable)}>
-        <table className={classNames(!data && tableStyles.empty)}>
-          <colgroup>
-            <col className={styles.userName} />
-            <col />
-            <col />
-          </colgroup>
-          <thead>
-            <tr>
-              <th>{t('users.user_name')}</th>
-              <th>{t('users.application_name')}</th>
-              <th>{t('users.latest_sign_in')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!data && error && (
-              <TableError
-                columns={3}
-                content={error.body?.message ?? error.message}
-                onRetry={async () => mutate(undefined, true)}
-              />
-            )}
-            {isLoading && <TableLoading columns={3} />}
-            {users?.length === 0 && (
-              <TableEmpty columns={3}>
-                <Button
-                  title="users.create"
-                  type="outline"
-                  onClick={() => {
-                    setIsCreateFormOpen(true);
-                  }}
+              return (
+                <ItemPreview
+                  title={getUserTitle(user)}
+                  subtitle={getUserSubtitle(user)}
+                  icon={<UserAvatar size="large" user={user} />}
+                  to={buildDetailsPathname(id)}
+                  suffix={conditional(isSuspended && <SuspendedTag />)}
                 />
-              </TableEmpty>
-            )}
-            {users?.map(({ id, name, avatar, lastSignInAt, applicationId }) => (
-              <tr
-                key={id}
-                className={tableStyles.clickable}
-                onClick={() => {
-                  navigate(`/users/${id}`);
-                }}
-              >
-                <td>
-                  <ItemPreview
-                    title={name || t('users.unnamed')}
-                    subtitle={id}
-                    icon={
-                      <img
-                        className={styles.avatar}
-                        src={avatar || generateAvatarPlaceHolderById(id)}
-                      />
-                    }
-                    to={`/users/${id}`}
-                    size="compact"
-                  />
-                </td>
-                <td>{applicationId ? <ApplicationName applicationId={applicationId} /> : '-'}</td>
-                <td>
-                  <DateTime>{lastSignInAt}</DateTime>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className={styles.pagination}>
-        {!!totalCount && (
-          <Pagination
-            pageCount={Math.ceil(totalCount / pageSize)}
-            pageIndex={pageIndex}
-            onChange={(page) => {
-              setQuery({ page: String(page), ...conditional(keyword && { search: keyword }) });
+              );
+            },
+          },
+          {
+            title: t('users.application_name'),
+            dataIndex: 'app',
+            colSpan: 5,
+            render: ({ applicationId }) =>
+              applicationId ? <ApplicationName applicationId={applicationId} /> : <div>-</div>,
+          },
+          {
+            title: t('users.latest_sign_in'),
+            dataIndex: 'lastSignInAt',
+            colSpan: 5,
+            render: ({ lastSignInAt }) => <LocaleDate>{lastSignInAt}</LocaleDate>,
+          },
+        ],
+        filter: (
+          <Search
+            placeholder={t('users.search')}
+            defaultValue={keyword}
+            isClearable={Boolean(keyword)}
+            onSearch={(keyword) => {
+              updateSearchParameters({ keyword, page: 1 });
+            }}
+            onClearSearch={() => {
+              updateSearchParameters({ keyword: '', page: 1 });
             }}
           />
-        )}
-      </div>
-    </Card>
+        ),
+        placeholder: keyword ? (
+          <EmptyDataPlaceholder />
+        ) : (
+          <TablePlaceholder
+            image={<UsersEmpty />}
+            imageDark={<UsersEmptyDark />}
+            title="users.placeholder_title"
+            description="users.placeholder_description"
+            action={
+              <Button
+                title="users.create"
+                type="primary"
+                size="large"
+                icon={<Plus />}
+                onClick={() => {
+                  navigate({
+                    pathname: createUserPathname,
+                    search,
+                  });
+                }}
+              />
+            }
+          />
+        ),
+        rowClickHandler: ({ id }) => {
+          navigate(buildDetailsPathname(id));
+        },
+        pagination: {
+          page,
+          pageSize,
+          totalCount,
+          onChange: (page) => {
+            updateSearchParameters({ page });
+          },
+        },
+        onRetry: async () => mutate(undefined, true),
+      }}
+      widgets={
+        isCreating && (
+          <CreateForm
+            onClose={() => {
+              navigate({
+                pathname: usersPathname,
+                search,
+              });
+            }}
+            onCreate={() => {
+              void mutate();
+            }}
+          />
+        )
+      }
+    />
   );
-};
+}
 
 export default Users;

@@ -1,41 +1,45 @@
-import { Passcodes, PasscodeType } from '@logto/schemas';
-import { createMockPool, createMockQueryResult, sql } from 'slonik';
+import { TemplateType } from '@logto/connector-kit';
+import { Passcodes } from '@logto/schemas';
+import { createMockPool, createMockQueryResult, sql } from '@silverhand/slonik';
 import { snakeCase } from 'snake-case';
 
-import { mockPasscode } from '@/__mocks__';
+import { mockPasscode } from '#src/__mocks__/index.js';
+import { DeletionError } from '#src/errors/SlonikError/index.js';
 import {
   convertToIdentifiers,
   convertToPrimitiveOrSql,
   excludeAutoSetFields,
-} from '@/database/utils';
-import envSet from '@/env-set';
-import { DeletionError } from '@/errors/SlonikError';
-import { expectSqlAssert, QueryType } from '@/utils/test-utils';
+} from '#src/utils/sql.js';
+import type { QueryType } from '#src/utils/test-utils.js';
+import { expectSqlAssert } from '#src/utils/test-utils.js';
 
-import {
-  findUnconsumedPasscodeByJtiAndType,
-  findUnconsumedPasscodesByJtiAndType,
-  insertPasscode,
-  deletePasscodeById,
-  deletePasscodesByIds,
-} from './passcode';
+const { jest } = import.meta;
 
 const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
 
-jest.spyOn(envSet, 'pool', 'get').mockReturnValue(
-  createMockPool({
-    query: async (sql, values) => {
-      return mockQuery(sql, values);
-    },
-  })
-);
+const pool = createMockPool({
+  query: async (sql, values) => {
+    return mockQuery(sql, values);
+  },
+});
+
+const { createPasscodeQueries } = await import('./passcode.js');
+const {
+  findUnconsumedPasscodeByJtiAndType,
+  findUnconsumedPasscodesByJtiAndType,
+  findUnconsumedPasscodeByIdentifierAndType,
+  findUnconsumedPasscodesByIdentifierAndType,
+  insertPasscode,
+  deletePasscodeById,
+  deletePasscodesByIds,
+} = createPasscodeQueries(pool);
 
 describe('passcode query', () => {
   const { table, fields } = convertToIdentifiers(Passcodes);
 
   it('findUnconsumedPasscodeByJtiAndType', async () => {
     const jti = 'foo';
-    const type = PasscodeType.SignIn;
+    const type = TemplateType.SignIn;
 
     const expectSql = sql`
       select ${sql.join(Object.values(fields), sql`, `)}
@@ -55,7 +59,7 @@ describe('passcode query', () => {
 
   it('findUnconsumedPasscodesByJtiAndType', async () => {
     const jti = 'foo';
-    const type = PasscodeType.SignIn;
+    const type = TemplateType.SignIn;
 
     const expectSql = sql`
       select ${sql.join(Object.values(fields), sql`, `)}
@@ -71,6 +75,56 @@ describe('passcode query', () => {
     });
 
     await expect(findUnconsumedPasscodesByJtiAndType(jti, type)).resolves.toEqual([mockPasscode]);
+  });
+
+  it('findUnconsumedPasscodeByIdentifierAndType', async () => {
+    const type = TemplateType.Generic;
+    const phone = '1234567890';
+    const mockGenericPasscode = { ...mockPasscode, interactionJti: null, type, phone };
+
+    const expectSql = sql`
+      select ${sql.join(Object.values(fields), sql`, `)}
+      from ${table}
+      where
+        ${fields.phone}=$1
+        and ${fields.type}=$2 and ${fields.consumed} = false
+    `;
+
+    mockQuery.mockImplementationOnce(async (sql, values) => {
+      expectSqlAssert(sql, expectSql.sql);
+      expect(values).toEqual([phone, type]);
+
+      return createMockQueryResult([mockGenericPasscode]);
+    });
+
+    await expect(findUnconsumedPasscodeByIdentifierAndType({ phone, type })).resolves.toEqual(
+      mockGenericPasscode
+    );
+  });
+
+  it('findUnconsumedPasscodesByIdentifierAndType', async () => {
+    const type = TemplateType.Generic;
+    const email = 'johndoe@example.com';
+    const mockGenericPasscode = { ...mockPasscode, interactionJti: null, type, email };
+
+    const expectSql = sql`
+      select ${sql.join(Object.values(fields), sql`, `)}
+      from ${table}
+      where
+        ${fields.email}=$1
+        and ${fields.type}=$2 and ${fields.consumed} = false
+    `;
+
+    mockQuery.mockImplementationOnce(async (sql, values) => {
+      expectSqlAssert(sql, expectSql.sql);
+      expect(values).toEqual([email, type]);
+
+      return createMockQueryResult([mockGenericPasscode]);
+    });
+
+    await expect(findUnconsumedPasscodesByIdentifierAndType({ email, type })).resolves.toEqual([
+      mockGenericPasscode,
+    ]);
   });
 
   it('insertPasscode', async () => {
@@ -133,12 +187,12 @@ describe('passcode query', () => {
     const ids = ['foo', 'foo2'];
     const expectSql = sql`
       delete from ${table}
-      where ${fields.id} in (${ids.join(',')})
+      where ${fields.id} in (${sql.join(ids, sql`,`)})
     `;
 
     mockQuery.mockImplementationOnce(async (sql, values) => {
       expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([ids.join(',')]);
+      expect(values).toEqual(ids);
 
       return createMockQueryResult([mockPasscode, mockPasscode]);
     });
@@ -150,12 +204,12 @@ describe('passcode query', () => {
     const ids = ['foo', 'foo2'];
     const expectSql = sql`
       delete from ${table}
-      where ${fields.id} in (${ids.join(',')})
+      where ${fields.id} in (${sql.join(ids, sql`,`)})
     `;
 
     mockQuery.mockImplementationOnce(async (sql, values) => {
       expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([ids.join(',')]);
+      expect(values).toEqual(ids);
 
       return createMockQueryResult([mockPasscode]);
     });

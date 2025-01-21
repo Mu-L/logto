@@ -1,14 +1,13 @@
 const demo_app = {
-  notification: 'Use your admin console account to sign in to this demo app.',
-  title: "You've successfully signed in the demo app!",
-  subtitle: 'Here is your log in information:',
+  title: "You've successfully signed in the live preview!",
+  subtitle: 'Here is your user information:',
   username: 'Username: ',
   user_id: 'User ID: ',
-  sign_out: 'Sign Out the Demo App',
+  sign_out: 'Sign out the live preview',
   continue_explore: 'Or continue to explore',
-  customize_sign_in_experience: 'Customize Sign-in Experience',
-  enable_passwordless: 'Enable Passwordless',
-  add_social_connector: 'Add Social Connector',
+  customize_sign_in_experience: 'Customize sign-in experience',
+  enable_passwordless: 'Enable passwordless',
+  add_social_connector: 'Add social connector',
 };
 
-export default demo_app;
+export default Object.freeze(demo_app);

@@ -1,135 +1,66 @@
-import { ConnectorPlatform } from '@logto/connector-types';
-import { Connector, ConnectorMetadata, ConnectorType } from '@logto/schemas';
+import type { ConnectorFactory } from '@logto/cli/lib/connector/index.js';
+import type router from '@logto/cloud/routes';
+import { ConnectorPlatform, DemoConnector } from '@logto/connector-kit';
+import type { Connector } from '@logto/schemas';
+import { ConnectorType } from '@logto/schemas';
+import { any } from 'zod';
 
-export const mockMetadata: ConnectorMetadata = {
-  id: 'id',
-  target: 'connector',
-  type: ConnectorType.Email,
-  platform: null,
-  name: {
-    en: 'Connector',
-    'zh-CN': '连接器',
-  },
-  logo: './logo.png',
-  logoDark: './logo-dark.png',
-  description: {
-    en: 'Connector',
-    'zh-CN': '连接器',
-  },
-  readme: 'README.md',
-  configTemplate: 'config-template.json',
-};
+import type { LogtoConnector } from '#src/utils/connectors/types.js';
+
+import {
+  mockConnector0,
+  mockConnector1,
+  mockConnector2,
+  mockConnector3,
+  mockConnector4,
+  mockConnector5,
+  mockConnector6,
+  mockMetadata,
+  mockMetadata0,
+  mockMetadata1,
+  mockMetadata2,
+  mockMetadata3,
+  mockMetadata4,
+  mockMetadata5,
+  mockMetadata6,
+} from './connector-base-data.js';
+
+export {
+  mockConnector0,
+  mockConnector1,
+  mockMetadata,
+  mockMetadata0,
+  mockMetadata1,
+  mockMetadata2,
+  mockMetadata3,
+} from './connector-base-data.js';
+
+const { jest } = import.meta;
 
 export const mockConnector: Connector = {
+  tenantId: 'fake_tenant',
   id: 'id',
-  enabled: true,
   config: {},
   createdAt: 1_234_567_890_123,
+  syncProfile: false,
+  metadata: {},
+  connectorId: 'id',
 };
 
-const mockMetadata0: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id0',
-  target: 'connector_0',
-  type: ConnectorType.Email,
-  platform: ConnectorPlatform.Universal,
+export const mockLogtoConnector = {
+  getAuthorizationUri: jest.fn(),
+  getUserInfo: jest.fn(),
+  sendMessage: jest.fn(),
+  validateConfig: jest.fn(),
+  configGuard: any(),
 };
 
-const mockMetadata1: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id1',
-  target: 'connector_1',
-  type: ConnectorType.SMS,
-  platform: ConnectorPlatform.Universal,
-};
-
-const mockMetadata2: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id2',
-  target: 'connector_2',
+export const mockConnectorFactory: ConnectorFactory<typeof router> = {
+  metadata: mockMetadata,
   type: ConnectorType.Social,
-  platform: ConnectorPlatform.Universal,
-};
-
-const mockMetadata3: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id3',
-  target: 'connector_3',
-  type: ConnectorType.Social,
-  platform: ConnectorPlatform.Universal,
-};
-
-const mockMetadata4: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id4',
-  target: 'connector_4',
-  type: ConnectorType.Social,
-  platform: ConnectorPlatform.Universal,
-};
-
-const mockMetadata5: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id5',
-  target: 'connector_5',
-  type: ConnectorType.Social,
-  platform: ConnectorPlatform.Universal,
-};
-
-const mockMetadata6: ConnectorMetadata = {
-  ...mockMetadata,
-  id: 'id6',
-  target: 'connector_6',
-  type: ConnectorType.Social,
-  platform: ConnectorPlatform.Universal,
-};
-
-const mockConnector0: Connector = {
-  id: 'id0',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_123,
-};
-
-const mockConnector1: Connector = {
-  id: 'id1',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_234,
-};
-
-const mockConnector2: Connector = {
-  id: 'id2',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_345,
-};
-
-const mockConnector3: Connector = {
-  id: 'id3',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_456,
-};
-
-const mockConnector4: Connector = {
-  id: 'id4',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_567,
-};
-
-const mockConnector5: Connector = {
-  id: 'id5',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_567,
-};
-
-const mockConnector6: Connector = {
-  id: 'id6',
-  enabled: true,
-  config: {},
-  createdAt: 1_234_567_890_567,
+  path: 'random_path',
+  configGuard: any(),
+  createConnector: jest.fn(),
 };
 
 export const mockConnectorList: Connector[] = [
@@ -142,42 +73,53 @@ export const mockConnectorList: Connector[] = [
   mockConnector6,
 ];
 
-export const mockConnectorInstanceList: Array<{
-  connector: Connector;
-  metadata: ConnectorMetadata;
-}> = [
+export const mockLogtoConnectorList: LogtoConnector[] = [
   {
-    connector: mockConnector0,
-    metadata: { ...mockMetadata0, type: ConnectorType.Social },
+    dbEntry: mockConnector0,
+    metadata: { ...mockMetadata0 },
+    type: ConnectorType.Social,
+    ...mockLogtoConnector,
   },
   {
-    connector: mockConnector1,
+    dbEntry: mockConnector1,
     metadata: mockMetadata1,
+    type: ConnectorType.Sms,
+    ...mockLogtoConnector,
   },
   {
-    connector: mockConnector2,
+    dbEntry: mockConnector2,
     metadata: mockMetadata2,
+    type: ConnectorType.Social,
+    ...mockLogtoConnector,
   },
   {
-    connector: mockConnector3,
+    dbEntry: mockConnector3,
     metadata: mockMetadata3,
+    type: ConnectorType.Social,
+    ...mockLogtoConnector,
   },
   {
-    connector: mockConnector4,
-    metadata: { ...mockMetadata4, type: ConnectorType.Email, platform: null },
+    dbEntry: mockConnector4,
+    metadata: { ...mockMetadata4, platform: null },
+    type: ConnectorType.Email,
+    ...mockLogtoConnector,
   },
   {
-    connector: mockConnector5,
-    metadata: { ...mockMetadata5, type: ConnectorType.SMS, platform: null },
+    dbEntry: mockConnector5,
+    metadata: { ...mockMetadata5, platform: null },
+    type: ConnectorType.Sms,
+    ...mockLogtoConnector,
   },
   {
-    connector: mockConnector6,
-    metadata: { ...mockMetadata6, type: ConnectorType.Email, platform: null },
+    dbEntry: mockConnector6,
+    metadata: { ...mockMetadata6, platform: null },
+    type: ConnectorType.Email,
+    ...mockLogtoConnector,
   },
 ];
 
-export const mockAliyunDmConnectorInstance = {
-  connector: {
+export const mockAliyunDmConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'aliyun-dm',
   },
@@ -185,13 +127,14 @@ export const mockAliyunDmConnectorInstance = {
     ...mockMetadata,
     id: 'aliyun-dm',
     target: 'aliyun-dm',
-    type: ConnectorType.Email,
     platform: null,
   },
+  type: ConnectorType.Email,
+  ...mockLogtoConnector,
 };
 
-export const mockAliyunSmsConnectorInstance = {
-  connector: {
+export const mockAliyunSmsConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'aliyun-sms',
   },
@@ -199,13 +142,14 @@ export const mockAliyunSmsConnectorInstance = {
     ...mockMetadata,
     id: 'aliyun-sms',
     target: 'aliyun-sms',
-    type: ConnectorType.SMS,
     platform: null,
   },
+  type: ConnectorType.Sms,
+  ...mockLogtoConnector,
 };
 
-export const mockFacebookConnectorInstance = {
-  connector: {
+export const mockFacebookConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'facebook',
   },
@@ -213,13 +157,14 @@ export const mockFacebookConnectorInstance = {
     ...mockMetadata,
     id: 'facebook',
     target: 'facebook',
-    type: ConnectorType.Social,
     platform: ConnectorPlatform.Web,
   },
+  type: ConnectorType.Social,
+  ...mockLogtoConnector,
 };
 
-export const mockGithubConnectorInstance = {
-  connector: {
+export const mockGithubConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'github',
   },
@@ -227,13 +172,14 @@ export const mockGithubConnectorInstance = {
     ...mockMetadata,
     id: 'github',
     target: 'github',
-    type: ConnectorType.Social,
     platform: ConnectorPlatform.Web,
   },
+  type: ConnectorType.Social,
+  ...mockLogtoConnector,
 };
 
-export const mockWechatConnectorInstance = {
-  connector: {
+export const mockWechatConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'wechat-web',
   },
@@ -241,13 +187,14 @@ export const mockWechatConnectorInstance = {
     ...mockMetadata,
     id: 'wechat-web',
     target: 'wechat',
-    type: ConnectorType.Social,
     platform: ConnectorPlatform.Web,
   },
+  type: ConnectorType.Social,
+  ...mockLogtoConnector,
 };
 
-export const mockWechatNativeConnectorInstance = {
-  connector: {
+export const mockWechatNativeConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'wechat-native',
   },
@@ -255,32 +202,86 @@ export const mockWechatNativeConnectorInstance = {
     ...mockMetadata,
     id: 'wechat-native',
     target: 'wechat',
-    type: ConnectorType.Social,
     platform: ConnectorPlatform.Native,
   },
+  type: ConnectorType.Social,
+  ...mockLogtoConnector,
 };
 
-export const mockGoogleConnectorInstance = {
-  connector: {
+export const mockGoogleConnector: LogtoConnector = {
+  dbEntry: {
     ...mockConnector,
     id: 'google',
-    enabled: false,
+    config: {
+      clientId: 'fake_client_id',
+      clientSecret: 'fake_client_secret',
+      oneTap: {
+        isEnabled: true,
+        autoSelect: true,
+      },
+    },
   },
   metadata: {
     ...mockMetadata,
-    id: 'google',
+    id: 'google-universal',
     target: 'google',
-    type: ConnectorType.Social,
     platform: ConnectorPlatform.Web,
   },
+  type: ConnectorType.Social,
+  ...mockLogtoConnector,
 };
 
-export const mockConnectorInstances = [
-  mockAliyunDmConnectorInstance,
-  mockAliyunSmsConnectorInstance,
-  mockFacebookConnectorInstance,
-  mockGithubConnectorInstance,
-  mockGoogleConnectorInstance,
-  mockWechatConnectorInstance,
-  mockWechatNativeConnectorInstance,
+export const mockDemoSocialConnector: LogtoConnector = {
+  dbEntry: {
+    ...mockConnector,
+    id: 'demo-social',
+  },
+  metadata: {
+    ...mockMetadata,
+    id: DemoConnector.Social,
+    target: 'github',
+    platform: null,
+  },
+  type: ConnectorType.Social,
+  ...mockLogtoConnector,
+};
+
+export const socialTarget01 = 'socialTarget-id01';
+export const socialTarget02 = 'socialTarget-id02';
+
+export const mockSocialConnectors: LogtoConnector[] = [
+  {
+    dbEntry: {
+      tenantId: 'fake_tenant',
+      id: 'id0',
+      config: {},
+      createdAt: 1_234_567_890_123,
+      syncProfile: false,
+      metadata: {},
+      connectorId: 'id0',
+    },
+    metadata: {
+      ...mockMetadata,
+      target: socialTarget01,
+    },
+    type: ConnectorType.Social,
+    ...mockLogtoConnector,
+  },
+  {
+    dbEntry: {
+      tenantId: 'fake_tenant',
+      id: 'id1',
+      config: {},
+      createdAt: 1_234_567_890_123,
+      syncProfile: false,
+      metadata: {},
+      connectorId: 'id1',
+    },
+    metadata: {
+      ...mockMetadata,
+      target: socialTarget02,
+    },
+    type: ConnectorType.Social,
+    ...mockLogtoConnector,
+  },
 ];

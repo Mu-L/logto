@@ -1,35 +1,35 @@
 import { Applications } from '@logto/schemas';
-import { createMockPool, createMockQueryResult, sql } from 'slonik';
+import { createMockPool, createMockQueryResult, sql } from '@silverhand/slonik';
 import { snakeCase } from 'snake-case';
 
-import { mockApplication } from '@/__mocks__';
+import { mockApplication } from '#src/__mocks__/index.js';
+import { DeletionError } from '#src/errors/SlonikError/index.js';
 import {
   convertToIdentifiers,
   convertToPrimitiveOrSql,
   excludeAutoSetFields,
-} from '@/database/utils';
-import envSet from '@/env-set';
-import { DeletionError } from '@/errors/SlonikError';
-import { expectSqlAssert, QueryType } from '@/utils/test-utils';
+} from '#src/utils/sql.js';
+import type { QueryType } from '#src/utils/test-utils.js';
+import { expectSqlAssert } from '#src/utils/test-utils.js';
 
-import {
+const { jest } = import.meta;
+
+const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
+
+const pool = createMockPool({
+  query: async (sql, values) => {
+    return mockQuery(sql, values);
+  },
+});
+
+const { createApplicationQueries } = await import('./application.js');
+const {
   findTotalNumberOfApplications,
-  findAllApplications,
   findApplicationById,
   insertApplication,
   updateApplicationById,
   deleteApplicationById,
-} from './application';
-
-const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
-
-jest.spyOn(envSet, 'pool', 'get').mockReturnValue(
-  createMockPool({
-    query: async (sql, values) => {
-      return mockQuery(sql, values);
-    },
-  })
-);
+} = createApplicationQueries(pool);
 
 describe('application query', () => {
   const { table, fields } = convertToIdentifiers(Applications);
@@ -48,29 +48,6 @@ describe('application query', () => {
     });
 
     await expect(findTotalNumberOfApplications()).resolves.toEqual({ count: 10 });
-  });
-
-  it('findAllApplications', async () => {
-    const limit = 10;
-    const offset = 1;
-    const rowData = { id: 'foo' };
-
-    const expectSql = sql`
-      select ${sql.join(Object.values(fields), sql`, `)}
-      from ${table}
-      order by "created_at" desc
-      limit $1
-      offset $2
-    `;
-
-    mockQuery.mockImplementationOnce(async (sql, values) => {
-      expectSqlAssert(sql, expectSql.sql);
-      expect(values).toEqual([limit, offset]);
-
-      return createMockQueryResult([rowData]);
-    });
-
-    await expect(findAllApplications(limit, offset)).resolves.toEqual([rowData]);
   });
 
   it('findApplicationById', async () => {

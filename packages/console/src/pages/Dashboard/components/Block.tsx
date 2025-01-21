@@ -1,47 +1,47 @@
-import { AdminConsoleKey } from '@logto/phrases';
+import type { AdminConsoleKey } from '@logto/phrases';
 import { conditionalString } from '@silverhand/essentials';
 import classNames from 'classnames';
-import { useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
-import Card from '@/components/Card';
-import Tooltip from '@/components/Tooltip';
-import { ArrowDown, ArrowUp } from '@/icons/Arrow';
-import Tip from '@/icons/Tip';
-import { formatNumberWithComma } from '@/utilities/number';
+import ArrowDown from '@/assets/icons/arrow-down.svg?react';
+import ArrowUp from '@/assets/icons/arrow-up.svg?react';
+import Tip from '@/assets/icons/tip.svg?react';
+import Card from '@/ds-components/Card';
+import DynamicT from '@/ds-components/DynamicT';
+import IconButton from '@/ds-components/IconButton';
+import { ToggleTip } from '@/ds-components/Tip';
+import type { Props as ToggleTipProps } from '@/ds-components/Tip/ToggleTip';
+import { formatNumberWithComma } from '@/utils/number';
 
-import * as styles from './Block.module.scss';
+import styles from './Block.module.scss';
 
 type Props = {
-  count: number;
-  delta?: number;
-  title: AdminConsoleKey;
-  tooltip?: AdminConsoleKey;
-  variant?: 'bordered' | 'default' | 'plain';
+  readonly count: number;
+  readonly delta?: number;
+  readonly title: AdminConsoleKey;
+  readonly tip?: ToggleTipProps['content'];
+  readonly variant?: 'bordered' | 'default' | 'plain';
 };
 
-const Block = ({ variant = 'default', count, delta, title, tooltip }: Props) => {
-  const { t } = useTranslation(undefined, { keyPrefix: 'admin_console' });
-  const tipRef = useRef<HTMLDivElement>(null);
-
-  const deltaLable = delta !== undefined && `${conditionalString(delta >= 0 && '+')}${delta}`;
+function Block({ variant = 'default', count, delta, title, tip }: Props) {
+  const deltaLabel = delta !== undefined && `${conditionalString(delta >= 0 && '+')}${delta}`;
 
   return (
     <Card className={classNames(styles.block, styles[variant])}>
       <div className={styles.title}>
-        {t(title)}
-        {tooltip && (
-          <div ref={tipRef} className={styles.icon}>
-            <Tip />
-            <Tooltip anchorRef={tipRef} content={t(tooltip)} />
-          </div>
+        <DynamicT forKey={title} />
+        {tip && (
+          <ToggleTip anchorClassName={styles.toggleTipButton} content={tip}>
+            <IconButton size="small">
+              <Tip />
+            </IconButton>
+          </ToggleTip>
         )}
       </div>
       <div className={styles.content}>
         <div className={styles.number}>{formatNumberWithComma(count)}</div>
         {delta !== undefined && (
           <div className={classNames(styles.delta, delta < 0 && styles.down)}>
-            <span>({deltaLable})</span>
+            <span>({deltaLabel})</span>
             {delta > 0 && <ArrowUp />}
             {delta < 0 && <ArrowDown />}
           </div>
@@ -49,6 +49,6 @@ const Block = ({ variant = 'default', count, delta, title, tooltip }: Props) => 
       </div>
     </Card>
   );
-};
+}
 
 export default Block;

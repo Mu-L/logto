@@ -1,28 +1,43 @@
-import { ConnectorType, SignInExperience, SignInMethodState } from '@logto/schemas';
+import { SignInIdentifier, ConnectorType } from '@logto/schemas';
+import type { SignInExperience, ConnectorResponse } from '@logto/schemas';
+import { useCallback } from 'react';
 import useSWR from 'swr';
 
-import { RequestError } from './use-api';
+import type { RequestError } from './use-api';
 
-const useConnectorInUse = (type?: ConnectorType, target?: string): boolean | undefined => {
-  const { data } = useSWR<SignInExperience, RequestError>(target && type && '/api/sign-in-exp');
+const useConnectorInUse = () => {
+  const { data } = useSWR<SignInExperience, RequestError>('api/sign-in-exp');
 
-  if (!data) {
-    return;
-  }
+  const isConnectorInUse = useCallback(
+    (connector?: ConnectorResponse) => {
+      if (!connector || !data) {
+        return false;
+      }
 
-  if (type === ConnectorType.Email) {
-    return data.signInMethods.email !== SignInMethodState.Disabled;
-  }
+      const { type, target } = connector;
 
-  if (type === ConnectorType.SMS) {
-    return data.signInMethods.sms !== SignInMethodState.Disabled;
-  }
+      if (type === ConnectorType.Social) {
+        return data.socialSignInConnectorTargets.includes(target);
+      }
 
-  if (!target) {
-    return;
-  }
+      const relatedIdentifier =
+        type === ConnectorType.Email ? SignInIdentifier.Email : SignInIdentifier.Phone;
 
-  return data.socialSignInConnectorTargets.includes(target);
+      const usedInSignUp =
+        data.signUp.identifiers.includes(relatedIdentifier) && data.signUp.verify;
+
+      const usedInSignIn = data.signIn.methods.some(
+        ({ identifier, verificationCode }) => verificationCode && identifier === relatedIdentifier
+      );
+
+      return usedInSignUp || usedInSignIn;
+    },
+    [data]
+  );
+
+  return {
+    isConnectorInUse,
+  };
 };
 
 export default useConnectorInUse;

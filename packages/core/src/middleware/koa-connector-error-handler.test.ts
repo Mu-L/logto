@@ -1,9 +1,11 @@
-import { ConnectorError, ConnectorErrorCodes } from '@logto/connector-types';
+import { ConnectorError, ConnectorErrorCodes } from '@logto/connector-kit';
 
-import RequestError from '@/errors/RequestError';
-import { createContextWithRouteParameters } from '@/utils/test-utils';
+import RequestError from '#src/errors/RequestError/index.js';
+import { createContextWithRouteParameters } from '#src/utils/test-utils.js';
 
-import koaConnectorErrorHandler from './koa-connector-error-handler';
+import koaConnectorErrorHandler from './koa-connector-error-handler.js';
+
+const { jest } = import.meta;
 
 describe('koaConnectorErrorHandler middleware', () => {
   const next = jest.fn();
@@ -21,6 +23,24 @@ describe('koaConnectorErrorHandler middleware', () => {
     });
 
     await expect(koaConnectorErrorHandler()(ctx, next)).rejects.toMatchError(error);
+  });
+
+  it('Invalid Request Parameters', async () => {
+    const message = 'Mock Invalid Request Parameters';
+    const error = new ConnectorError(ConnectorErrorCodes.InvalidRequestParameters, message);
+    next.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    await expect(koaConnectorErrorHandler()(ctx, next)).rejects.toMatchError(
+      new RequestError(
+        {
+          code: 'connector.invalid_request_parameters',
+          status: 400,
+        },
+        { message }
+      )
+    );
   });
 
   it('Insufficient Request Parameters', async () => {
@@ -88,7 +108,7 @@ describe('koaConnectorErrorHandler middleware', () => {
       new RequestError(
         {
           code: 'connector.template_not_found',
-          status: 500,
+          status: 400,
         },
         { message }
       )
@@ -105,7 +125,7 @@ describe('koaConnectorErrorHandler middleware', () => {
     await expect(koaConnectorErrorHandler()(ctx, next)).rejects.toMatchError(
       new RequestError(
         {
-          code: 'connector.oauth_code_invalid',
+          code: 'connector.social_auth_code_invalid',
           status: 401,
         },
         { message }
@@ -123,7 +143,7 @@ describe('koaConnectorErrorHandler middleware', () => {
     await expect(koaConnectorErrorHandler()(ctx, next)).rejects.toMatchError(
       new RequestError(
         {
-          code: 'connector.invalid_access_token',
+          code: 'connector.social_invalid_access_token',
           status: 401,
         },
         { message }
@@ -141,7 +161,7 @@ describe('koaConnectorErrorHandler middleware', () => {
     await expect(koaConnectorErrorHandler()(ctx, next)).rejects.toMatchError(
       new RequestError(
         {
-          code: 'connector.invalid_id_token',
+          code: 'connector.social_invalid_id_token',
           status: 401,
         },
         { message }
@@ -167,6 +187,24 @@ describe('koaConnectorErrorHandler middleware', () => {
     );
   });
 
+  it('Rate Limit Exceeded', async () => {
+    const message = 'Mock Rate Limit Exceeded';
+    const error = new ConnectorError(ConnectorErrorCodes.RateLimitExceeded, message);
+    next.mockImplementationOnce(() => {
+      throw error;
+    });
+
+    await expect(koaConnectorErrorHandler()(ctx, next)).rejects.toMatchError(
+      new RequestError(
+        {
+          code: 'connector.rate_limit_exceeded',
+          status: 429,
+        },
+        { message }
+      )
+    );
+  });
+
   it('General connector errors with string type messages', async () => {
     const message = 'Mock General connector errors';
     const error = new ConnectorError(ConnectorErrorCodes.General, message);
@@ -178,7 +216,8 @@ describe('koaConnectorErrorHandler middleware', () => {
       new RequestError(
         {
           code: 'connector.general',
-          status: 500,
+          status: 400,
+          errorDescription: JSON.stringify({ message }),
         },
         { message }
       )
@@ -196,8 +235,8 @@ describe('koaConnectorErrorHandler middleware', () => {
       new RequestError(
         {
           code: 'connector.general',
-          status: 500,
-          errorDescription: '\nMock General connector errors',
+          status: 400,
+          errorDescription: 'Mock General connector errors',
         },
         message
       )

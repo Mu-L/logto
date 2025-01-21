@@ -1,31 +1,27 @@
 name: Update Metadata
 
 on:
-  pull_request:
+  # CAREFUL! https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 concurrency: 
-  group: update-metadata-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   update-metadata:
     runs-on: ubuntu-latest
 
-    permissions:
-      issues: write
-      pull-requests: write
-
     steps:
       - name: Add labels
-        uses: silverhand-io/actions-add-labels-run-steps@v1.1.2
+        uses: silverhand-io/actions-add-labels-run-steps@v1.2.1
         with:
           title: ${{ github.event.pull_request.title || github.event.issue.title }}
           github-token: ${{ github.token }}
 
       - name: Add assignees
         if: |
-          github.event_name == 'pull_request' &&
           contains(fromJson('["opened", "reopened"]'), github.event.action) &&
           !endsWith(github.event.pull_request.user.login, '[bot]')
         uses: actions-ecosystem/action-add-assignees@v1
@@ -36,14 +32,13 @@ jobs:
   pr-size-diff:
     runs-on: ubuntu-latest
 
-    permissions:
-      issues: write
-      pull-requests: write
-
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
+          # https://github.com/actions/checkout/issues/518#issuecomment-890401887
+          ref: refs/pull/${{ github.event.number }}/merge
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Prepare
         run: |
@@ -52,7 +47,7 @@ jobs:
           curl -fsSLO https://gist.githubusercontent.com/gao-sun/88dac6c38e86f4ae12c8a7c3e777040a/raw/07276574142455b3dfeace5d7f4a370447a112b3/git-file-size-diff.sh
           chmod +x git-file-size-diff.sh
 
-      - uses: actions/github-script@v6
+      - uses: actions/github-script@v7
         id: message
         with:
           result-encoding: string

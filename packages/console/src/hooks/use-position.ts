@@ -1,13 +1,7 @@
-import { RefObject, useCallback, useEffect, useState } from 'react';
+import type { RefObject } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-export type VerticalAlignment = 'top' | 'bottom';
-
-export type HorizontalAlignment = 'start' | 'center' | 'end';
-
-type Offset = {
-  vertical: number;
-  horizontal: number;
-};
+import type { HorizontalAlignment, Offset, Position, VerticalAlignment } from '@/types/positioning';
 
 type Props = {
   verticalAlign: VerticalAlignment;
@@ -17,33 +11,52 @@ type Props = {
   overlayRef: RefObject<Element>;
 };
 
-type Position = {
-  top: number;
-  left: number;
-};
-
 // Leave space for box-shadow effect.
 const windowSafePadding = 12;
 
 const selectVerticalAlignment = ({
   verticalAlign,
   verticalTop,
+  verticalMiddle,
   verticalBottom,
   overlayHeight,
 }: {
   verticalAlign: VerticalAlignment;
   verticalTop: number;
+  verticalMiddle: number;
   verticalBottom: number;
   overlayHeight: number;
-}) => {
+}): VerticalAlignment => {
   const minY = windowSafePadding;
   const maxY = window.innerHeight - windowSafePadding;
 
   const isTopAllowed = verticalTop >= minY;
+  const isCenterAllowed =
+    verticalMiddle - overlayHeight / 2 >= minY && verticalMiddle + overlayHeight / 2 <= maxY;
   const isBottomAllowed = verticalBottom + overlayHeight <= maxY;
 
   switch (verticalAlign) {
     case 'top': {
+      if (isTopAllowed) {
+        return 'top';
+      }
+
+      if (isBottomAllowed) {
+        return 'bottom';
+      }
+
+      if (isCenterAllowed) {
+        return 'middle';
+      }
+
+      return verticalAlign;
+    }
+
+    case 'middle': {
+      if (isCenterAllowed) {
+        return 'middle';
+      }
+
       if (isTopAllowed) {
         return 'top';
       }
@@ -64,10 +77,10 @@ const selectVerticalAlignment = ({
         return 'top';
       }
 
-      return verticalAlign;
-    }
+      if (isCenterAllowed) {
+        return 'middle';
+      }
 
-    default: {
       return verticalAlign;
     }
   }
@@ -142,10 +155,6 @@ const selectHorizontalAlignment = ({
 
       return horizontalAlign;
     }
-
-    default: {
-      return horizontalAlign;
-    }
   }
 };
 
@@ -167,18 +176,22 @@ export default function usePosition({
 
     const anchorRect = anchorRef.current.getBoundingClientRect();
     const overlayRect = overlayRef.current.getBoundingClientRect();
-    const { scrollTop, scrollLeft } = document.documentElement;
 
-    const verticalTop = anchorRect.y - overlayRect.height + scrollTop - offset.vertical;
-    const verticalBottom = anchorRect.y + anchorRect.height + scrollTop + offset.vertical;
+    const verticalTop = anchorRect.y - overlayRect.height + offset.vertical;
+    const verticalMiddle =
+      anchorRect.y + anchorRect.height / 2 - overlayRect.height / 2 + offset.vertical;
+    const verticalBottom = anchorRect.y + anchorRect.height + offset.vertical;
 
-    const verticalPositionMap = { top: verticalTop, bottom: verticalBottom };
+    const verticalPositionMap = {
+      top: verticalTop,
+      middle: verticalMiddle,
+      bottom: verticalBottom,
+    };
 
-    const horizontalStart = anchorRect.x + scrollLeft + offset.horizontal;
+    const horizontalStart = anchorRect.x + offset.horizontal;
     const horizontalCenter =
-      anchorRect.x + anchorRect.width / 2 - overlayRect.width / 2 + scrollLeft + offset.horizontal;
-    const horizontalEnd =
-      anchorRect.x + anchorRect.width - overlayRect.width + scrollLeft + offset.horizontal;
+      anchorRect.x + anchorRect.width / 2 - overlayRect.width / 2 + offset.horizontal;
+    const horizontalEnd = anchorRect.x + anchorRect.width - overlayRect.width + offset.horizontal;
 
     const horizontalPositionMap = {
       start: horizontalStart,
@@ -189,6 +202,7 @@ export default function usePosition({
     const selectedVerticalAlign = selectVerticalAlignment({
       verticalAlign,
       verticalTop,
+      verticalMiddle,
       verticalBottom,
       overlayHeight: overlayRect.height,
     });

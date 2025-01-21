@@ -4,7 +4,7 @@ Thanks for your interest in contributing to Logto. We respect the time of commun
 
 **Table of contents**
 
-- [(Draft) Contribute to Logto](#draft-contribute-to-logto)
+- [(Draft) Contribute to Logto monorepo](#draft-contribute-to-logto-monorepo)
   - [Contribution Type](#contribution-type)
     - [Bug fixes](#bug-fixes)
     - [Connectors](#connectors)
@@ -12,10 +12,12 @@ Thanks for your interest in contributing to Logto. We respect the time of commun
   - [Set up the dev environment](#set-up-the-dev-environment)
     - [Prerequisites](#prerequisites)
     - [Clone and install dependencies](#clone-and-install-dependencies)
-    - [Set up environment variables (optional)](#set-up-environment-variables-optional)
+    - [Set up database](#set-up-database)
+    - [Database alteration](#database-alteration)
+    - [Add connectors (optional)](#add-connectors-optional)
   - [Start dev](#start-dev)
-    - [Note for a fresh setup](#note-for-a-fresh-setup)
   - [Make changes](#make-changes)
+  - [Commit and create pull request](#commit-and-create-pull-request)
 
 ## Contribution Type
 
@@ -38,18 +40,19 @@ Usually, we'll confirm the details in the issue thread, and you can work on the 
 
 Connector is the standard way in Logto to connect third-party services like SMS, email, and social identity providers. See [Connectors](https://docs.logto.io/docs/references/connectors/) if you don't know the concept yet.
 
+> **Note**
+>
+> You can find all official connectors [here](https://github.com/logto-io/logto/tree/master/packages/connectors).
+
 Before starting the work, join our [Discord channel](https://discord.gg/cyWnux4cH6) or [email us](mailto:contact@logto.io) to double-check if there's an ongoing project for your desired connector. We'll confirm with you your need and the status quo.
 
-Since a new connector means a new Node.js package, we encourage you to separate your work into two Pull Requests:
-
-1. The initial setup of the connector package, including `package.json`, base dependencies and scripts (build, lint, etc.), and the connector class skeleton (a class extends the base class, but no implementation).
-2. The full connector implementation with unit tests.
+You can read this [documentation](https://docs.logto.io/docs/recipes/create-your-connector/) which describes how to implement and test a connector through concrete examples.
 
 ### Core features
 
 If you find some feature is related to customer identity and doesn't belong to a specific connector, then most likely, it's a core feature.
 
-Since Logto is still in the early stage, it may already be in our roadmap. Until we have a publicly accessible place for the roadmap, join our [Discord channel](https://discord.gg/cyWnux4cH6) or [email us](mailto:contact@logto.io) to get the details.
+Since Logto is still in the early stage, it may already be in [our roadmap](https://silverhand.notion.site/Logto-Public-Roadmap-d6a1ad19039946b7b1139811aed82dcc). You can also join our [Discord channel](https://discord.gg/vRvwuwgpVX) or [email us](mailto:contact@logto.io) to get the details.
 
 The concept of feature varies by the situation, so we'll work with you to figure out the best way to contribute before starting.
 
@@ -61,7 +64,7 @@ We use the monorepo approach for development. Since pnpm supports monorepo natur
 
 You'll need these installed to proceed:
 
-- [Node.js](https://nodejs.org/) `^16.13.0`
+- [Node.js](https://nodejs.org/) `^18.12.0`
 - [pnpm](https://pnpm.io/) `^7.0`
 - A [Postgres](https://postgresql.org/) `^14.0` instance
 
@@ -70,17 +73,34 @@ You'll need these installed to proceed:
 Clone the repo https://github.com/logto-io/logto in the way you like, then execute the command below in the project root:
 
 ```bash
-pnpm i
+pnpm i && pnpm prepack
 ```
 
-It may take a while to install dependencies.
+`pnpm i` installs dependencies, which might take some time, and `pnpm prepack` builds the necessary workspace dependencies, enabling editors such as VSCode to locate their declarations.
 
-### Set up environment variables (optional)
+### Set up database
 
-The root `npm start` is optimized for public release, which carries the `--from-root` parameter. In the dev environment, usually, we read `.env` from the package location instead.
+Create a `.env` file with the following content in the project root, or set the environment variable directly:
 
-- If you already have a `.env` in the project root, move it into `packages/core/` before continuing.
-- If it's a fresh setup, no action is needed now. You can follow the command line questions afterward.
+```env
+DB_URL=postgresql://your-postgres-dsn/logto # Replace with your own
+```
+
+Then run `pnpm cli db seed` to seed data into your database.
+
+### Database alteration
+
+If you are upgrading your dev environment from an older version, or facing the `Found undeployed database alterations...` error when starting Logto, you need to deploy the database alteration first.
+
+Run `pnpm alteration deploy` and start Logto again. See [Database alteration](https://docs.logto.io/docs/tutorials/using-cli/database-alteration) for reference of this command.
+
+If you are developing something with database alterations, see [packages/schemas/alteration](https://github.com/logto-io/logto/tree/master/packages/schemas/alterations) to learn more.
+
+### Add connectors (optional)
+
+Run `logto connector link -p .` to link all local connectors. You can also use `logto connector add <name> -p .` to install connector from NPM.
+
+See [Manage connectors](https://docs.logto.io/docs/references/using-cli/manage-connectors) for details about managing connectors via CLI.
 
 ## Start dev
 
@@ -90,19 +110,7 @@ Run the command below in the project root:
 pnpm dev
 ```
 
-The command will do several things in order:
-
-1. Compile `connectors`, `schemas`, and `phrases`.
-2. Compile `core`, `ui`, `console`, and `demo-app`.
-3. Watch the changes of the packages in step 2.
-
-### Note for a fresh setup
-
-If you start dev with no `.env` provided (a fresh setup), it'll have a great possibility that you'll miss the first question.
-
-This is because `parcel` uses `ora` to show an in-line spinner which will overwrite the question, which asks if you'd like to generate a new cookie key.
-
-Just press enter when you see the message like `✨ Built in 8.21s` to generate a new key by Logto.
+The command will watch the changes in most of the packages and restart services when needed.
 
 ## Make changes
 
@@ -112,9 +120,7 @@ By default, Logto runs in `http://localhost:3001`, which will redirect you to th
 
 **I updated some code, but it doesn't work.**
 
-For now, `pnpm dev` only watches four packages: `core`, `ui`, `console`, and `demo-app`. If you changed other packages like connectors or schemas, you must stop the dev command and run again.
-
-Sorry for the inconvenience. We're working on a better dev command which watches all related packages.
+Please [report a bug](https://github.com/logto-io/logto/issues/new/choose) in issues.
 
 ## Commit and create pull request
 

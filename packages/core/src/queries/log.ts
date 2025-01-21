@@ -1,102 +1,106 @@
-import { CreateLog, Log, Logs, LogType } from '@logto/schemas';
-import { sql } from 'slonik';
+import {
+  type token,
+  type hook,
+  Logs,
+  type HookExecutionStats,
+  type Log,
+  type interaction,
+  type LogKeyUnknown,
+  type jwtCustomizer,
+  type saml,
+} from '@logto/schemas';
+import { conditional, conditionalArray } from '@silverhand/essentials';
+import { sql } from '@silverhand/slonik';
+import type { CommonQueryMethods } from '@silverhand/slonik';
+import { subDays } from 'date-fns';
 
-import { buildFindEntityById } from '@/database/find-entity-by-id';
-import { buildInsertInto } from '@/database/insert-into';
-import { conditionalSql, convertToIdentifiers } from '@/database/utils';
-import envSet from '@/env-set';
+import { buildFindEntityByIdWithPool } from '#src/database/find-entity-by-id.js';
+import { buildInsertIntoWithPool } from '#src/database/insert-into.js';
+import { conditionalSql, convertToIdentifiers } from '#src/utils/sql.js';
 
 const { table, fields } = convertToIdentifiers(Logs);
 
-export const insertLog = buildInsertInto<CreateLog>(Logs);
+export type AllowedKeyPrefix =
+  | hook.Type
+  | token.Type
+  | interaction.Prefix
+  | jwtCustomizer.Prefix
+  | saml.Prefix
+  | typeof LogKeyUnknown;
 
-export interface LogCondition {
-  logType?: string;
-  applicationId?: string;
-  userId?: string;
-}
+type LogCondition = {
+  logKey?: string;
+  payload?: { applicationId?: string; userId?: string; hookId?: string };
+  startTimeExclusive?: number;
+  includeKeyPrefix?: AllowedKeyPrefix[];
+};
 
 const buildLogConditionSql = (logCondition: LogCondition) =>
-  conditionalSql(logCondition, ({ logType, applicationId, userId }) => {
+  conditionalSql(logCondition, ({ logKey, payload, startTimeExclusive, includeKeyPrefix = [] }) => {
+    const keyPrefixFilter = conditional(
+      includeKeyPrefix.length > 0 &&
+        includeKeyPrefix.map((prefix) => sql`${fields.key} like ${`${prefix}%`}`)
+    );
     const subConditions = [
-      conditionalSql(logType, (logType) => sql`${fields.type}=${logType}`),
-      conditionalSql(userId, (userId) => sql`${fields.payload}->>'userId'=${userId}`),
       conditionalSql(
-        applicationId,
-        (applicationId) => sql`${fields.payload}->>'applicationId'=${applicationId}`
+        keyPrefixFilter,
+        (keyPrefixFilter) => sql`(${sql.join(keyPrefixFilter, sql` or `)})`
+      ),
+      ...conditionalArray(
+        payload &&
+          Object.entries(payload).map(([key, value]) =>
+            value ? sql`${fields.payload}->>${key}=${value}` : sql``
+          )
+      ),
+      conditionalSql(logKey, (logKey) => sql`${fields.key}=${logKey}`),
+      conditionalSql(
+        startTimeExclusive,
+        (startTimeExclusive) =>
+          sql`${fields.createdAt} > to_timestamp(${startTimeExclusive}::double precision / 1000)`
       ),
     ].filter(({ sql }) => sql);
 
     return subConditions.length > 0 ? sql`where ${sql.join(subConditions, sql` and `)}` : sql``;
   });
 
-export const countLogs = async (condition: LogCondition) =>
-  envSet.pool.one<{ count: number }>(sql`
-    select count(*)
-    from ${table}
-    ${buildLogConditionSql(condition)}
-  `);
+export const createLogQueries = (pool: CommonQueryMethods) => {
+  const insertLog = buildInsertIntoWithPool(pool)(Logs);
 
-export const findLogs = async (limit: number, offset: number, logCondition: LogCondition) =>
-  envSet.pool.any<Log>(sql`
-    select ${sql.join(Object.values(fields), sql`,`)}
-    from ${table}
-    ${buildLogConditionSql(logCondition)}
-    order by ${fields.createdAt} desc
-    limit ${limit}
-    offset ${offset}
-  `);
+  const countLogs = async (condition: LogCondition) =>
+    pool.one<{ count: number }>(sql`
+      select count(*)
+      from ${table}
+      ${buildLogConditionSql(condition)}
+    `);
 
-export const findLogById = buildFindEntityById<CreateLog, Log>(Logs);
+  const findLogs = async (limit: number, offset: number, logCondition: LogCondition) =>
+    pool.any<Log>(sql`
+      select ${sql.join(Object.values(fields), sql`,`)}
+      from ${table}
+      ${buildLogConditionSql(logCondition)}
+      order by ${fields.createdAt} desc
+      limit ${limit}
+      offset ${offset}
+    `);
 
-const registerLogTypes: LogType[] = [
-  'RegisterUsernamePassword',
-  'RegisterEmail',
-  'RegisterSms',
-  'RegisterSocial',
-];
+  const findLogById = buildFindEntityByIdWithPool(pool)(Logs);
 
-export const getDailyNewUserCountsByTimeInterval = async (
-  startTimeExclusive: number,
-  endTimeInclusive: number
-) =>
-  envSet.pool.any<{ date: string; count: number }>(sql`
-    select date(${fields.createdAt}), count(*)
-    from ${table}
-    where ${fields.createdAt} > to_timestamp(${startTimeExclusive}::double precision / 1000)
-    and ${fields.createdAt} <= to_timestamp(${endTimeInclusive}::double precision / 1000)
-    and ${fields.type} in (${sql.join(registerLogTypes, sql`, `)})
-    and ${fields.payload}->>'result' = 'Success'
-    group by date(${fields.createdAt})
-  `);
+  const getHookExecutionStatsByHookId = async (hookId: string) => {
+    const startTimeExclusive = subDays(new Date(), 1).getTime();
+    return pool.one<HookExecutionStats>(sql`
+      select count(*) as request_count,
+      count(case when ${fields.payload}->>'result' = 'Success' then 1 end) as success_count
+      from ${table}
+      where ${fields.createdAt} > to_timestamp(${startTimeExclusive}::double precision / 1000)
+      and ${fields.payload}->>'hookId' = ${hookId}
+    `);
+  };
 
-// The active user should exchange the tokens by the authorization code (i.e. sign-in)
-// or exchange the access token, which will expire in 2 hours, by the refresh token.
-const activeUserLogTypes: LogType[] = ['CodeExchangeToken', 'RefreshTokenExchangeToken'];
-
-export const getDailyActiveUserCountsByTimeInterval = async (
-  startTimeExclusive: number,
-  endTimeInclusive: number
-) =>
-  envSet.pool.any<{ date: string; count: number }>(sql`
-    select date(${fields.createdAt}), count(distinct(${fields.payload}->>'userId'))
-    from ${table}
-    where ${fields.createdAt} > to_timestamp(${startTimeExclusive}::double precision / 1000)
-    and ${fields.createdAt} <= to_timestamp(${endTimeInclusive}::double precision / 1000)
-    and ${fields.type} in (${sql.join(activeUserLogTypes, sql`, `)})
-    and ${fields.payload}->>'result' = 'Success'
-    group by date(${fields.createdAt})
-  `);
-
-export const countActiveUsersByTimeInterval = async (
-  startTimeExclusive: number,
-  endTimeInclusive: number
-) =>
-  envSet.pool.one<{ count: number }>(sql`
-    select count(distinct(${fields.payload}->>'userId'))
-    from ${table}
-    where ${fields.createdAt} > to_timestamp(${startTimeExclusive}::double precision / 1000)
-    and ${fields.createdAt} <= to_timestamp(${endTimeInclusive}::double precision / 1000)
-    and ${fields.type} in (${sql.join(activeUserLogTypes, sql`, `)})
-    and ${fields.payload}->>'result' = 'Success'
-  `);
+  return {
+    insertLog,
+    countLogs,
+    findLogs,
+    findLogById,
+    getHookExecutionStatsByHookId,
+  };
+};

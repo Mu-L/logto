@@ -1,81 +1,101 @@
-import { dateRegex } from '@logto/shared';
-import dayjs, { Dayjs } from 'dayjs';
-import { object, string } from 'zod';
+import { dateRegex } from '@logto/core-kit';
+import { getActiveUsersResponseGuard, getNewUsersResponseGuard } from '@logto/schemas';
+import { endOfDay, format, subDays } from 'date-fns';
+import { number, object, string } from 'zod';
 
-import koaGuard from '@/middleware/koa-guard';
-import {
-  countActiveUsersByTimeInterval,
-  getDailyActiveUserCountsByTimeInterval,
-  getDailyNewUserCountsByTimeInterval,
-} from '@/queries/log';
-import { countUsers } from '@/queries/user';
+import koaGuard from '#src/middleware/koa-guard.js';
 
-import { AuthedRouter } from './types';
+import type { ManagementApiRouter, RouterInitArgs } from './types.js';
 
-const getDateString = (day: Dayjs) => day.format('YYYY-MM-DD');
+const getDateString = (date: Date | number) => format(date, 'yyyy-MM-dd');
 
 const indices = (length: number) => [...Array.from({ length }).keys()];
 
-const lastTimestampOfDay = (day: Dayjs) => day.endOf('day').valueOf();
+const getEndOfDayTimestamp = (date: Date | number) => endOfDay(date).valueOf();
 
-export default function dashboardRoutes<T extends AuthedRouter>(router: T) {
-  router.get('/dashboard/users/total', async (ctx, next) => {
-    const { count: totalUserCount } = await countUsers();
-    ctx.body = { totalUserCount };
+export default function dashboardRoutes<T extends ManagementApiRouter>(
+  ...[router, { queries }]: RouterInitArgs<T>
+) {
+  const {
+    dailyActiveUsers: { countActiveUsersByTimeInterval, getDailyActiveUserCountsByTimeInterval },
+    users: { countUsers, getDailyNewUserCountsByTimeInterval },
+  } = queries;
 
-    return next();
-  });
+  router.get(
+    '/dashboard/users/total',
+    koaGuard({
+      response: object({
+        totalUserCount: number(),
+      }),
+      status: [200],
+    }),
+    async (ctx, next) => {
+      const { count: totalUserCount } = await countUsers({});
+      ctx.body = { totalUserCount };
 
-  router.get('/dashboard/users/new', async (ctx, next) => {
-    const today = dayjs();
-    const dailyNewUserCounts = await getDailyNewUserCountsByTimeInterval(
-      // (14 days ago 23:59:59.999, today 23:59:59.999]
-      lastTimestampOfDay(today.subtract(14, 'day')),
-      lastTimestampOfDay(today)
-    );
+      return next();
+    }
+  );
 
-    const last14DaysNewUserCounts = new Map(
-      dailyNewUserCounts.map(({ date, count }) => [date, count])
-    );
+  router.get(
+    '/dashboard/users/new',
+    koaGuard({
+      response: getNewUsersResponseGuard,
+      status: [200],
+    }),
+    async (ctx, next) => {
+      const today = Date.now();
+      const dailyNewUserCounts = await getDailyNewUserCountsByTimeInterval(
+        // (14 days ago 23:59:59.999, today 23:59:59.999]
+        getEndOfDayTimestamp(subDays(today, 14)),
+        getEndOfDayTimestamp(today)
+      );
 
-    const todayNewUserCount = last14DaysNewUserCounts.get(getDateString(today)) ?? 0;
-    const yesterday = today.subtract(1, 'day');
-    const yesterdayNewUserCount = last14DaysNewUserCounts.get(getDateString(yesterday)) ?? 0;
-    const todayDelta = todayNewUserCount - yesterdayNewUserCount;
+      const last14DaysNewUserCounts = new Map(
+        dailyNewUserCounts.map(({ date, count }) => [date, count])
+      );
 
-    const last7DaysNewUserCount = indices(7)
-      .map((index) => getDateString(today.subtract(index, 'day')))
-      .reduce((sum, date) => sum + (last14DaysNewUserCounts.get(date) ?? 0), 0);
-    const newUserCountFrom13DaysAgoTo7DaysAgo = indices(7)
-      .map((index) => getDateString(today.subtract(7 + index, 'day')))
-      .reduce((sum, date) => sum + (last14DaysNewUserCounts.get(date) ?? 0), 0);
-    const last7DaysDelta = last7DaysNewUserCount - newUserCountFrom13DaysAgoTo7DaysAgo;
+      const todayNewUserCount = last14DaysNewUserCounts.get(getDateString(today)) ?? 0;
+      const yesterday = subDays(today, 1);
+      const yesterdayNewUserCount = last14DaysNewUserCounts.get(getDateString(yesterday)) ?? 0;
+      const todayDelta = todayNewUserCount - yesterdayNewUserCount;
 
-    ctx.body = {
-      today: {
-        count: todayNewUserCount,
-        delta: todayDelta,
-      },
-      last7Days: {
-        count: last7DaysNewUserCount,
-        delta: last7DaysDelta,
-      },
-    };
+      const last7DaysNewUserCount = indices(7)
+        .map((index) => getDateString(subDays(today, index)))
+        .reduce((sum, date) => sum + (last14DaysNewUserCounts.get(date) ?? 0), 0);
+      const newUserCountFrom13DaysAgoTo7DaysAgo = indices(7)
+        .map((index) => getDateString(subDays(today, index + 7)))
+        .reduce((sum, date) => sum + (last14DaysNewUserCounts.get(date) ?? 0), 0);
+      const last7DaysDelta = last7DaysNewUserCount - newUserCountFrom13DaysAgoTo7DaysAgo;
 
-    return next();
-  });
+      ctx.body = {
+        today: {
+          count: todayNewUserCount,
+          delta: todayDelta,
+        },
+        last7Days: {
+          count: last7DaysNewUserCount,
+          delta: last7DaysDelta,
+        },
+      };
+
+      return next();
+    }
+  );
 
   router.get(
     '/dashboard/users/active',
     koaGuard({
       query: object({ date: string().regex(dateRegex).optional() }),
+      response: getActiveUsersResponseGuard,
+      status: [200],
     }),
     async (ctx, next) => {
       const {
         query: { date },
       } = ctx.guard;
 
-      const targetDay = date ? dayjs(date) : dayjs(); // Defaults to today
+      const targetDay = date ? new Date(date) : new Date(); // Defaults to today
       const [
         // DAU: Daily Active User
         last30DauCounts,
@@ -88,39 +108,39 @@ export default function dashboardRoutes<T extends AuthedRouter>(router: T) {
       ] = await Promise.all([
         getDailyActiveUserCountsByTimeInterval(
           // (30 days ago 23:59:59.999, target day 23:59:59.999]
-          lastTimestampOfDay(targetDay.subtract(30, 'day')),
-          lastTimestampOfDay(targetDay)
+          getEndOfDayTimestamp(subDays(targetDay, 30)),
+          getEndOfDayTimestamp(targetDay)
         ),
         countActiveUsersByTimeInterval(
           // (14 days ago 23:59:59.999, 7 days ago 23:59:59.999]
-          lastTimestampOfDay(targetDay.subtract(14, 'day')),
-          lastTimestampOfDay(targetDay.subtract(7, 'day'))
+          getEndOfDayTimestamp(subDays(targetDay, 14)),
+          getEndOfDayTimestamp(subDays(targetDay, 7))
         ),
         countActiveUsersByTimeInterval(
           // (7 days ago 23:59:59.999, target day 23:59:59.999]
-          lastTimestampOfDay(targetDay.subtract(7, 'day')),
-          lastTimestampOfDay(targetDay)
+          getEndOfDayTimestamp(subDays(targetDay, 7)),
+          getEndOfDayTimestamp(targetDay)
         ),
         countActiveUsersByTimeInterval(
           // (60 days ago 23:59:59.999, 30 days ago 23:59:59.999]
-          lastTimestampOfDay(targetDay.subtract(60, 'day')),
-          lastTimestampOfDay(targetDay.subtract(30, 'day'))
+          getEndOfDayTimestamp(subDays(targetDay, 60)),
+          getEndOfDayTimestamp(subDays(targetDay, 30))
         ),
         countActiveUsersByTimeInterval(
           // (30 days ago 23:59:59.999, target day 23:59:59.999]
-          lastTimestampOfDay(targetDay.subtract(30, 'day')),
-          lastTimestampOfDay(targetDay)
+          getEndOfDayTimestamp(subDays(targetDay, 30)),
+          getEndOfDayTimestamp(targetDay)
         ),
       ]);
 
-      const previousDate = getDateString(targetDay.subtract(1, 'day'));
+      const previousDate = getDateString(subDays(targetDay, 1));
       const targetDate = getDateString(targetDay);
 
       const previousDAU = last30DauCounts.find(({ date }) => date === previousDate)?.count ?? 0;
       const dau = last30DauCounts.find(({ date }) => date === targetDate)?.count ?? 0;
 
       const dauCurve = indices(30).map((index) => {
-        const dateString = getDateString(targetDay.subtract(29 - index, 'day'));
+        const dateString = getDateString(subDays(targetDay, 29 - index));
         const count = last30DauCounts.find(({ date }) => date === dateString)?.count ?? 0;
 
         return { date: dateString, count };

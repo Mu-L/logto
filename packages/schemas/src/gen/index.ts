@@ -1,97 +1,86 @@
 // LOG-88: Refactor '@logto/schemas' type gen
 // Consider add the better assert into `essentials` package
-// eslint-disable-next-line no-restricted-imports
-import assert from 'assert';
-import fs from 'fs/promises';
-import path from 'path';
 
-import { conditional, conditionalString } from '@silverhand/essentials';
+import assert from 'node:assert';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+import { conditionalString, deduplicate } from '@silverhand/essentials';
 import camelcase from 'camelcase';
-import uniq from 'lodash.uniq';
 import pluralize from 'pluralize';
 
-import { generateSchema } from './schema';
-import { FileData, Table, Field, Type, GeneratedType, TableWithType } from './types';
+import { generateSchema } from './schema.js';
+import type { FileData, Table, Field, Type, GeneratedType, TableWithType } from './types.js';
 import {
+  type ParenthesesMatch,
   findFirstParentheses,
-  getType,
   normalizeWhitespaces,
-  removeParentheses,
+  parseType,
   removeUnrecognizedComments,
-} from './utils';
+  splitTableFieldDefinitions,
+  stripLeadingJsDocComments as stripComments,
+  stripLeadingJsDocComments as stripLeadingJsDocumentComments,
+  getLeadingJsDocComments as getLeadingJsDocumentComments,
+} from './utils.js';
 
 const directory = 'tables';
+const constrainedKeywords = [
+  'primary',
+  'foreign',
+  'unique',
+  'exclude',
+  'check',
+  'constraint',
+  'references',
+];
 
-const getOutputFileName = (file: string) => pluralize(file.slice(0, -4).replace(/_/g, '-'), 1);
+const getOutputFileName = (file: string) => pluralize(file.slice(0, -4).replaceAll('_', '-'), 1);
 
 const generate = async () => {
   const files = await fs.readdir(directory);
+
   const generated = await Promise.all(
     files
       .filter((file) => file.endsWith('.sql'))
       .map<Promise<[string, FileData]>>(async (file) => {
-        const paragraph = await fs.readFile(path.join(directory, file), { encoding: 'utf-8' });
+        const paragraph = await fs.readFile(path.join(directory, file), { encoding: 'utf8' });
+
+        // Get statements
         const statements = paragraph
           .split(';')
-          .map((value) => normalizeWhitespaces(value))
-          .map((value) => removeUnrecognizedComments(value));
+          .map((value) => removeUnrecognizedComments(value))
+          .map((value) => normalizeWhitespaces(value));
+
+        // Parse Table statements
         const tables = statements
-          .filter((value) => value.toLowerCase().startsWith('create table'))
-          .map((value) => findFirstParentheses(value))
-          .filter((value): value is NonNullable<typeof value> => Boolean(value))
-          .map<Table>(({ prefix, body }) => {
+          .filter((value) =>
+            stripLeadingJsDocumentComments(value).toLowerCase().startsWith('create table')
+          )
+          .map(
+            (value) => [findFirstParentheses(stripLeadingJsDocumentComments(value)), value] as const
+          )
+          .filter((value): value is NonNullable<[ParenthesesMatch, string]> => Boolean(value[0]))
+          .map<Table>(([{ prefix, body }, raw]) => {
             const name = normalizeWhitespaces(prefix).split(' ')[2];
             assert(name, 'Missing table name: ' + prefix);
 
-            const fields = removeParentheses(body)
-              .split(',')
+            const comments = getLeadingJsDocumentComments(raw);
+            const fields = splitTableFieldDefinitions(body)
               .map((value) => normalizeWhitespaces(value))
               .filter((value) =>
-                [
-                  'primary',
-                  'foreign',
-                  'unique',
-                  'exclude',
-                  'check',
-                  'constraint',
-                  'references',
-                ].every((constraint) => !value.toLowerCase().startsWith(constraint + ' '))
+                constrainedKeywords.every(
+                  (constraint) =>
+                    !stripComments(value)
+                      .toLowerCase()
+                      .startsWith(constraint + ' ')
+                )
               )
-              // eslint-disable-next-line complexity
-              .map<Field>((value) => {
-                const [nameRaw, typeRaw, ...rest] = value.split(' ');
-                assert(nameRaw && typeRaw, 'Missing column name or type: ' + value);
+              .map<Field>((value) => parseType(value));
 
-                const name = nameRaw.toLowerCase();
-                const type = typeRaw.toLowerCase();
-                const restJoined = rest.join(' ');
-                const restLowercased = restJoined.toLowerCase();
-                // CAUTION: Only works for single dimension arrays
-                const isArray = Boolean(/\[.*]/.test(type)) || restLowercased.includes('array');
-                const hasDefaultValue = restLowercased.includes('default');
-                const nullable = !restLowercased.includes('not null');
-                const primitiveType = getType(type);
-                const tsType = /\/\* @use (.*) \*\//.exec(restJoined)?.[1];
-                assert(
-                  !(!primitiveType && tsType),
-                  `TS type can only be applied on primitive types, found ${
-                    tsType ?? 'N/A'
-                  } over ${type}`
-                );
-
-                return {
-                  name,
-                  type: primitiveType,
-                  customType: conditional(!primitiveType && type),
-                  tsType,
-                  isArray,
-                  hasDefaultValue,
-                  nullable,
-                };
-              });
-
-            return { name, fields };
+            return { name, comments, fields };
           });
+
+        // Parse enum statements
         const types = statements
           .filter((value) => value.toLowerCase().startsWith('create type'))
           .map<Type>((value) => {
@@ -116,7 +105,7 @@ const generate = async () => {
 
   const generatedDirectory = 'src/db-entries';
   const generatedTypesFilename = 'custom-types';
-  const tsTypesFilename = '../foundations';
+  const tsTypesFilename = '../foundations/index';
   const header = '// THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.\n\n';
 
   await fs.rm(generatedDirectory, { recursive: true, force: true });
@@ -151,13 +140,12 @@ const generate = async () => {
   // Generate DB entry types
   await Promise.all(
     generated.map(async ([file, { tables }]) => {
-      // LOG-88 Need refactor, disable mutation rules for now.
       /* eslint-disable @silverhand/fp/no-mutating-methods */
       const tsTypes: string[] = [];
       const customTypes: string[] = [];
       const tableWithTypes = tables.map<TableWithType>(({ fields, ...rest }) => ({
         ...rest,
-        // eslint-disable-next-line complexity
+
         fields: fields.map(({ type, customType, tsType, ...rest }) => {
           const finalType =
             tsType ?? type ?? allTypes.find(({ name }) => name === customType)?.tsName;
@@ -174,7 +162,7 @@ const generate = async () => {
       }));
 
       if (tableWithTypes.length > 0) {
-        tsTypes.push('GeneratedSchema', 'Guard', 'CreateGuard');
+        tsTypes.push('GeneratedSchema', 'Guard');
       }
       /* eslint-enable @silverhand/fp/no-mutating-methods */
 
@@ -186,10 +174,10 @@ const generate = async () => {
         tsTypes.length > 0 &&
           [
             'import {',
-            uniq(tsTypes)
+            deduplicate(tsTypes)
               .map((value) => `  ${value}`)
               .join(',\n'),
-            `} from './${tsTypesFilename}';`,
+            `} from'./${tsTypesFilename}.js';`,
           ].join('\n') + '\n\n'
       );
 
@@ -197,10 +185,10 @@ const generate = async () => {
         customTypes.length > 0 &&
           [
             'import {',
-            uniq(customTypes)
+            deduplicate(customTypes)
               .map((value) => `  ${value}`)
               .join(',\n'),
-            `} from './${generatedTypesFilename}';`,
+            `} from'./${generatedTypesFilename}.js';`,
           ].join('\n') + '\n\n'
       );
 
@@ -214,11 +202,12 @@ const generate = async () => {
       await fs.writeFile(path.join(generatedDirectory, getOutputFileName(file) + '.ts'), content);
     })
   );
+
   await fs.writeFile(
     path.join(generatedDirectory, 'index.ts'),
     header +
-      conditionalString(allTypes.length > 0 && `export * from './${generatedTypesFilename}';\n`) +
-      generated.map(([file]) => `export * from './${getOutputFileName(file)}';`).join('\n') +
+      conditionalString(allTypes.length > 0 && `export * from'./${generatedTypesFilename}.js';\n`) +
+      generated.map(([file]) => `export * from'./${getOutputFileName(file)}.js';`).join('\n') +
       '\n'
   );
 };

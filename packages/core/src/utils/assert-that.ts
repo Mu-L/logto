@@ -1,15 +1,19 @@
-import { LogtoErrorCode } from '@logto/phrases';
+import type { LogtoErrorCode } from '@logto/phrases';
 import { assert } from '@silverhand/essentials';
 
-import RequestError from '@/errors/RequestError';
+import RequestError from '#src/errors/RequestError/index.js';
 
-export type AssertThatFunction = <E extends Error>(
+type AssertThatFunction = {
+  <E extends Error>(value: unknown, error: E): asserts value;
+  (value: unknown, error: LogtoErrorCode, status?: number): asserts value;
+};
+
+const assertThat: AssertThatFunction = <E extends Error>(
   value: unknown,
-  error: E | LogtoErrorCode
-) => asserts value;
-
-const assertThat: AssertThatFunction = (value, error): asserts value => {
-  assert(value, error instanceof Error ? error : new RequestError({ code: error }));
+  error: E | LogtoErrorCode,
+  status?: number
+): asserts value => {
+  assert(value, error instanceof Error ? error : new RequestError({ code: error, status }));
 };
 
 export default assertThat;

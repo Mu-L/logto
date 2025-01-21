@@ -1,8 +1,9 @@
-import { HTMLProps, useRef, useState } from 'react';
+import type { HTMLProps } from 'react';
+import { useRef, useState } from 'react';
 
 const githubRawUrlPrefix = 'https://raw.githubusercontent.com/logto-io/logto/master';
 
-const GithubRawImage = ({ src, alt }: HTMLProps<HTMLImageElement>) => {
+function GithubRawImage({ src, alt }: HTMLProps<HTMLImageElement>) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [width, setWidth] = useState(0);
 
@@ -26,9 +27,10 @@ const GithubRawImage = ({ src, alt }: HTMLProps<HTMLImageElement>) => {
       src={`${githubRawUrlPrefix}${src}`}
       alt={alt}
       width={`${width}px`}
+      crossOrigin="anonymous"
       onLoad={onLoad}
     />
   );
-};
+}
 
 export default GithubRawImage;

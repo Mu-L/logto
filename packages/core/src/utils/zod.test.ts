@@ -1,15 +1,35 @@
-import { ApplicationType, arbitraryObjectGuard } from '@logto/schemas';
+import { languages, languageTagGuard } from '@logto/language-kit';
+import {
+  ApplicationType,
+  jsonObjectGuard,
+  translationGuard,
+  customContentGuard,
+} from '@logto/schemas';
 import { string, boolean, number, object, nativeEnum, unknown, literal, union } from 'zod';
 
-import RequestError from '@/errors/RequestError';
+import RequestError from '#src/errors/RequestError/index.js';
 
-import { ZodStringCheck, zodTypeToSwagger } from './zod';
+import type { ZodStringCheck } from './zod.js';
+import { zodTypeToSwagger } from './zod.js';
 
 describe('zodTypeToSwagger', () => {
   it('arbitrary object guard', () => {
-    expect(zodTypeToSwagger(arbitraryObjectGuard)).toEqual({
+    expect(zodTypeToSwagger(jsonObjectGuard)).toEqual({
       type: 'object',
       description: 'arbitrary',
+    });
+  });
+
+  it('translation object guard', () => {
+    expect(zodTypeToSwagger(translationGuard)).toEqual({
+      $ref: '#/components/schemas/TranslationObject',
+    });
+  });
+
+  it('language tag guard', () => {
+    expect(zodTypeToSwagger(languageTagGuard)).toEqual({
+      type: 'string',
+      enum: Object.keys(languages),
     });
   });
 
@@ -17,7 +37,7 @@ describe('zodTypeToSwagger', () => {
     const notStartingWithDigitRegex = /^\D/;
 
     it('nonempty check', () => {
-      expect(zodTypeToSwagger(string().nonempty())).toEqual({
+      expect(zodTypeToSwagger(string().min(1))).toEqual({
         type: 'string',
         minLength: 1,
       });
@@ -204,5 +224,14 @@ describe('zodTypeToSwagger', () => {
     expect(() => zodTypeToSwagger('test')).toMatchError(
       new RequestError('swagger.invalid_zod_type', 'test')
     );
+  });
+
+  it('record type', () => {
+    expect(zodTypeToSwagger(customContentGuard)).toEqual({
+      type: 'object',
+      additionalProperties: {
+        type: 'string',
+      },
+    });
   });
 });

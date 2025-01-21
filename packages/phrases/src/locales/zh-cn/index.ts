@@ -1,10 +1,13 @@
-import en from '../en';
-import errors from './errors';
-import translation from './translation';
+import { type DeepPartial } from '@silverhand/essentials';
 
-const zhCN: typeof en = Object.freeze({
+import type { LocalePhrase } from '../../types.js';
+
+import errors from './errors/index.js';
+import translation from './translation/index.js';
+
+const zh_cn = {
   translation,
   errors,
-});
+} satisfies DeepPartial<LocalePhrase>;
 
-export default zhCN;
+export default Object.freeze(zh_cn);

@@ -1,38 +1,47 @@
-import { createMockPool, createMockQueryResult } from 'slonik';
+import { createMockPool, createMockQueryResult } from '@silverhand/slonik';
 
-import { mockSignInExperience } from '@/__mocks__';
-import envSet from '@/env-set';
-import { expectSqlAssert, QueryType } from '@/utils/test-utils';
+import { mockSignInExperience } from '#src/__mocks__/index.js';
+import { MockWellKnownCache } from '#src/test-utils/tenant.js';
+import type { QueryType } from '#src/utils/test-utils.js';
+import { expectSqlAssert } from '#src/utils/test-utils.js';
 
-import { findDefaultSignInExperience, updateDefaultSignInExperience } from './sign-in-experience';
+const { jest } = import.meta;
 
 const mockQuery: jest.MockedFunction<QueryType> = jest.fn();
 
-jest.spyOn(envSet, 'pool', 'get').mockReturnValue(
-  createMockPool({
-    query: async (sql, values) => {
-      return mockQuery(sql, values);
-    },
-  })
-);
+const pool = createMockPool({
+  query: async (sql, values) => {
+    return mockQuery(sql, values);
+  },
+});
+
+const { createSignInExperienceQueries } = await import('./sign-in-experience.js');
+const { findDefaultSignInExperience, updateDefaultSignInExperience } =
+  createSignInExperienceQueries(pool, new MockWellKnownCache());
 
 describe('sign-in-experience query', () => {
   const id = 'default';
 
-  const dbvalue = {
+  const databaseValue = {
     ...mockSignInExperience,
     color: JSON.stringify(mockSignInExperience.color),
     branding: JSON.stringify(mockSignInExperience.branding),
-    termsOfUse: JSON.stringify(mockSignInExperience.termsOfUse),
+    termsOfUseUrl: mockSignInExperience.termsOfUseUrl,
     languageInfo: JSON.stringify(mockSignInExperience.languageInfo),
-    signInMethods: JSON.stringify(mockSignInExperience.socialSignInConnectorTargets),
+    signIn: JSON.stringify(mockSignInExperience.signIn),
+    signUp: JSON.stringify(mockSignInExperience.signUp),
     socialSignInConnectorTargets: JSON.stringify(mockSignInExperience.socialSignInConnectorTargets),
+    customContent: JSON.stringify(mockSignInExperience.customContent),
+    customUiAssets: JSON.stringify(mockSignInExperience.customUiAssets),
+    passwordPolicy: JSON.stringify(mockSignInExperience.passwordPolicy),
+    mfa: JSON.stringify(mockSignInExperience.mfa),
+    socialSignIn: JSON.stringify(mockSignInExperience.socialSignIn),
   };
 
   it('findDefaultSignInExperience', async () => {
     /* eslint-disable sql/no-unsafe-query */
     const expectSql = `
-      select "id", "color", "branding", "language_info", "terms_of_use", "sign_in_methods", "social_sign_in_connector_targets", "sign_in_mode"
+      select "tenant_id", "id", "color", "branding", "language_info", "terms_of_use_url", "privacy_policy_url", "agree_to_terms_policy", "sign_in", "sign_up", "social_sign_in", "social_sign_in_connector_targets", "sign_in_mode", "custom_css", "custom_content", "custom_ui_assets", "password_policy", "mfa", "single_sign_on_enabled", "support_email", "support_website_url", "unknown_session_redirect_url"
       from "sign_in_experiences"
       where "id"=$1
     `;
@@ -42,21 +51,19 @@ describe('sign-in-experience query', () => {
       expectSqlAssert(sql, expectSql);
       expect(values).toEqual([id]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    await expect(findDefaultSignInExperience()).resolves.toEqual(dbvalue);
+    await expect(findDefaultSignInExperience()).resolves.toEqual(databaseValue);
   });
 
   it('updateDefaultSignInExperience', async () => {
-    const termsOfUse = {
-      enabled: false,
-    };
+    const { termsOfUseUrl } = mockSignInExperience;
 
     /* eslint-disable sql/no-unsafe-query */
     const expectSql = `
       update "sign_in_experiences"
-      set "terms_of_use"=$1
+      set "terms_of_use_url"=$1
       where "id"=$2
       returning *
     `;
@@ -64,11 +71,11 @@ describe('sign-in-experience query', () => {
 
     mockQuery.mockImplementationOnce(async (sql, values) => {
       expectSqlAssert(sql, expectSql);
-      expect(values).toEqual([JSON.stringify(termsOfUse), id]);
+      expect(values).toEqual([termsOfUseUrl, id]);
 
-      return createMockQueryResult([dbvalue]);
+      return createMockQueryResult([databaseValue]);
     });
 
-    await expect(updateDefaultSignInExperience({ termsOfUse })).resolves.toEqual(dbvalue);
+    await expect(updateDefaultSignInExperience({ termsOfUseUrl })).resolves.toEqual(databaseValue);
   });
 });
